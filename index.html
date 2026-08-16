@@ -1,0 +1,818 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Control Taxi por Puesto</title>
+<link rel="manifest" href="manifest.json" />
+<meta name="theme-color" content="#16181c" />
+<link rel="apple-touch-icon" href="icons/icon-192.png" />
+<link rel="icon" href="icons/icon-192.png" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;700&display=swap');
+*{box-sizing:border-box;}
+body{margin:0;background:#0f1013;}
+.app-shell{
+  --bg:#16181c; --bg-card:#1e2126; --bg-sub:#252831; --border:#30333a;
+  --yellow:#f4b400; --yellow-dim:#caa233; --green:#34a373; --red:#e2574c;
+  --text:#f5f3ee; --text-muted:#9a9a9a;
+  background:var(--bg); color:var(--text); font-family:'Inter',sans-serif;
+  padding:16px; max-width:480px; margin:0 auto; min-height:100vh; padding-bottom:60px;
+}
+.header{border-bottom:1px solid var(--border);padding-bottom:14px;margin-bottom:12px;}
+.header-top{display:flex;justify-content:space-between;align-items:flex-start;}
+.brand-eyebrow{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--yellow-dim);font-weight:600;}
+.brand-title{font-family:'Oswald',sans-serif;font-size:24px;font-weight:700;}
+.icon-btn{background:var(--bg-sub);border:1px solid var(--border);color:var(--text);border-radius:8px;width:34px;height:34px;display:flex;align-items:center;justify-content:center;flex-shrink:0;cursor:pointer;font-size:16px;}
+.spin{animation:spin 1s linear infinite;display:inline-block;}
+@keyframes spin{from{transform:rotate(0deg);}to{transform:rotate(360deg);}}
+.odo-row{display:flex;align-items:center;gap:10px;margin-top:12px;flex-wrap:wrap;}
+.odo-label{font-size:11px;color:var(--text-muted);text-transform:uppercase;}
+.odo-digit{background:#0f1013;border:1px solid var(--yellow-dim);color:var(--yellow);font-family:'JetBrains Mono',monospace;font-weight:700;font-size:15px;padding:3px 5px;border-radius:3px;min-width:16px;text-align:center;display:inline-block;}
+.saved-flash{margin-left:auto;font-size:11px;color:var(--green);}
+.tabs{display:flex;gap:6px;margin-bottom:14px;}
+.tab{flex:1;background:var(--bg-sub);border:1px solid var(--border);color:var(--text-muted);padding:9px 4px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;}
+.tab.active{background:var(--yellow);color:#1a1a1a;border-color:var(--yellow);}
+.tab-body{display:flex;flex-direction:column;gap:12px;}
+.date-row{display:flex;align-items:center;gap:6px;}
+.date-field{flex:1;display:flex;align-items:center;gap:6px;background:var(--bg-sub);border:1px solid var(--border);border-radius:8px;padding:0 10px;color:var(--text-muted);}
+.date-input{background:transparent;border:none;color:var(--text);padding:8px 2px;font-size:14px;flex:1;min-width:0;}
+.date-hint{font-size:11px;color:var(--text-muted);margin-top:-4px;}
+.today-btn{background:var(--yellow);color:#1a1a1a;border:none;border-radius:8px;padding:0 12px;height:34px;font-size:12px;font-weight:700;flex-shrink:0;cursor:pointer;}
+.card{background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:14px;}
+.card-title{display:flex;align-items:center;gap:8px;font-weight:600;font-size:14px;margin-bottom:10px;}
+.sec-badge{background:var(--bg-sub);border:1px solid var(--border);border-radius:6px;width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--yellow);}
+.field-label{display:block;font-size:12px;color:var(--text-muted);margin-bottom:5px;margin-top:8px;}
+.input{width:100%;background:var(--bg-sub);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:9px 10px;font-size:14px;box-sizing:border-box;}
+.inline-form{display:flex;gap:8px;align-items:flex-end;}
+.inline-form.wrap{flex-wrap:wrap;}
+.flex1{flex:1;}
+.fare-info{font-size:12px;color:var(--text-muted);margin-top:8px;}
+.fare-warning{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--yellow);margin-top:8px;background:rgba(244,180,0,.08);border:1px solid var(--yellow-dim);border-radius:8px;padding:8px;}
+.cat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}
+.quick-load{background:var(--bg-sub);border:1px dashed var(--border);border-radius:10px;padding:10px;margin-bottom:12px;}
+.quick-load-row{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:6px 0 4px;}
+.quick-load-col{display:flex;flex-direction:column;gap:4px;}
+.cat-btn{background:var(--bg-sub);border:1px solid var(--border);border-radius:10px;padding:10px 6px;display:flex;flex-direction:column;align-items:center;gap:2px;color:var(--text);cursor:pointer;font-family:inherit;}
+.cat-btn:active{background:var(--yellow);color:#1a1a1a;}
+.cat-btn-label{font-weight:600;font-size:13px;}
+.cat-btn-km{font-size:11px;color:var(--text-muted);}
+.list{display:flex;flex-direction:column;gap:6px;margin-top:10px;}
+.list-row{display:flex;align-items:center;gap:8px;background:var(--bg-sub);border:1px solid var(--border);border-radius:8px;padding:7px 9px;font-size:12px;flex-wrap:wrap;}
+.list-main{display:flex;flex-direction:column;gap:2px;min-width:120px;}
+.list-tag{font-weight:600;}
+.list-sub{color:var(--text-muted);flex:1;}
+.list-sub.neg{color:var(--red);}
+.draft-card{background:var(--bg-sub);border:1px solid var(--yellow-dim);border-radius:10px;padding:12px;margin-top:10px;}
+.draft-head{display:flex;justify-content:space-between;align-items:center;font-weight:700;font-size:13px;margin-bottom:8px;}
+.pax-row{display:flex;gap:10px;margin-top:8px;}
+.pax-col{flex:1;display:flex;flex-direction:column;gap:4px;}
+.stepper{display:flex;align-items:center;gap:6px;background:var(--bg);border-radius:6px;padding:2px 6px;width:fit-content;}
+.stepper button{background:none;border:none;color:var(--yellow);font-weight:700;font-size:16px;width:22px;height:26px;cursor:pointer;}
+.del-btn{background:none;border:none;color:var(--red);display:flex;cursor:pointer;}
+.add-btn{background:var(--yellow);border:none;color:#1a1a1a;border-radius:8px;width:38px;height:38px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:16px;}
+.add-btn.full{width:100%;display:flex;align-items:center;justify-content:center;gap:6px;border-radius:8px;margin-top:10px;font-size:13px;font-weight:700;height:38px;}
+.add-btn.full:disabled{opacity:.4;}
+.radio-row{display:flex;gap:8px;flex-wrap:wrap;}
+.radio-pill{flex:1;background:var(--bg-sub);border:1px solid var(--border);color:var(--text-muted);border-radius:20px;padding:8px 6px;font-size:11px;font-weight:600;cursor:pointer;min-width:120px;}
+.radio-pill.active{background:var(--yellow);color:#1a1a1a;border-color:var(--yellow);}
+.summary-card{background:var(--bg-card);border:1px solid var(--yellow-dim);border-radius:12px;padding:14px;}
+.summary-row{display:flex;justify-content:space-between;font-size:13px;padding:5px 0;color:var(--text-muted);}
+.summary-row.total{border-top:1px solid var(--border);margin-top:4px;padding-top:8px;font-size:15px;font-weight:700;color:var(--text);}
+.balance-usd{text-align:right;font-size:12px;color:var(--text-muted);margin-top:-2px;}
+.pos{color:var(--green);}
+.neg{color:var(--red);}
+.hist-row{width:100%;text-align:left;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:6px;color:var(--text);cursor:pointer;font-family:inherit;}
+.hist-date{font-weight:600;font-size:13px;display:flex;gap:8px;align-items:center;}
+.hist-flag{font-size:10px;background:rgba(226,87,76,.15);color:var(--red);padding:2px 6px;border-radius:10px;font-weight:600;}
+.hist-stats{display:flex;gap:12px;font-size:12px;color:var(--text-muted);margin-top:4px;}
+.empty-note{color:var(--text-muted);font-size:13px;text-align:center;padding:20px 0;}
+.month-nav{display:flex;align-items:center;justify-content:center;gap:16px;}
+.month-label{font-family:'Oswald',sans-serif;font-size:18px;font-weight:600;}
+.day-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;}
+.day-chip{aspect-ratio:1;background:var(--bg-sub);border:1px solid var(--border);border-radius:6px;color:var(--text-muted);font-size:11px;font-weight:600;cursor:pointer;}
+.day-chip.ok{background:rgba(52,163,115,.15);border-color:var(--green);color:var(--green);}
+.day-chip.missing{background:rgba(226,87,76,.08);border-color:var(--red);color:var(--red);}
+.legend-row{display:flex;gap:14px;margin-top:8px;font-size:11px;color:var(--text-muted);}
+.legend-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px;}
+.legend-dot.ok{background:var(--green);}
+.legend-dot.missing{background:var(--red);}
+.stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.stat-card{background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:10px 12px;}
+.stat-card.wide{grid-column:1/-1;}
+.stat-label{font-size:11px;color:var(--text-muted);text-transform:uppercase;}
+.stat-value{font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:700;margin-top:4px;}
+.stat-value.small{font-size:14px;}
+.export-row{display:flex;flex-direction:column;gap:8px;}
+.export-btn{display:flex;align-items:center;justify-content:center;gap:8px;background:var(--yellow);color:#1a1a1a;border:none;border-radius:10px;padding:12px;font-weight:700;font-size:13px;cursor:pointer;}
+.export-btn.secondary{background:var(--bg-sub);color:var(--text);border:1px solid var(--border);}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:flex-end;justify-content:center;z-index:50;}
+.modal{background:var(--bg-card);border:1px solid var(--border);border-radius:16px 16px 0 0;padding:18px;width:100%;max-width:480px;max-height:80vh;overflow-y:auto;}
+.modal-head{display:flex;justify-content:space-between;align-items:center;font-weight:700;font-size:16px;margin-bottom:10px;}
+.modal-note{font-size:11px;color:var(--text-muted);margin-top:12px;line-height:1.5;}
+select.input{-webkit-appearance:none;}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+/* ===================== Utilidades y modelo de datos ===================== */
+const CATS = [
+  { id: "corta", label: "Corta", km: 8.1 },
+  { id: "mediana", label: "Mediana", km: 9.6 },
+  { id: "larga", label: "Larga", km: 10 },
+];
+const GASTO_TIPOS = ["Aceite","Liga de frenos","Reparacion espichadura/cauchera","Lavado","Alimentacion/Hidratacion","Otro"];
+const DEFAULT_CONFIG = {
+  fuelDolarizadaUsdPorLitro: 0.5,
+  fuelSubsidizadaColaboracionUsd: 2,
+  metaPasajeUsd: 0.5,
+  litrosVueltaCorta: 0.85,
+  fareByMonth: {},
+  syncUrl: "",
+};
+
+function uid(){ return Math.random().toString(36).slice(2,10); }
+function todayStr(){ const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; }
+function monthKeyOf(d){ return d.slice(0,7); }
+function daysInMonth(mk){ const [y,m]=mk.split("-").map(Number); return new Date(y,m,0).getDate(); }
+function fmtBs(n){ const v=Number(n)||0; return v.toLocaleString("es-VE",{minimumFractionDigits:2,maximumFractionDigits:2})+" Bs"; }
+function fmtUsd(n){ if(n===null||n===undefined||isNaN(n)) return "--"; return "$"+Number(n).toFixed(3); }
+function esc(s){ return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+function blankRecord(date){
+  return { date, bcvRate:"", vueltas:[], personales:[], fuel:{tipo:"",litros:""}, gastos:[], cierre:{efectivo:"",pagoMovil:""} };
+}
+function normalizeApiDate(raw){
+  if(!raw || typeof raw!=="string") return null;
+  if(raw.includes("T")) return raw.slice(0,10);
+  const m=raw.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if(m) return `${m[3]}-${m[2]}-${m[1]}`;
+  if(/^\d{4}-\d{2}-\d{2}/.test(raw)) return raw.slice(0,10);
+  return null;
+}
+
+function vueltaPax(v){
+  const tipo = v.tipo===undefined ? "completa" : v.tipo;
+  if(tipo==="completa") return (v.tipo===undefined ? Number(v.pasajeros)||0 : (Number(v.pasajerosIda)||0)+(Number(v.pasajerosVuelta)||0));
+  return Number(v.pasajeros)||0;
+}
+function vueltaKm(v){
+  const cat = CATS.find(c=>c.id===v.categoria); if(!cat) return 0;
+  const tipo = v.tipo===undefined ? "completa" : v.tipo;
+  return cat.km * (tipo==="completa" ? 1 : 0.5);
+}
+function vueltaMonto(v, fare){
+  if(v.monto!==undefined) return Number(v.monto)||0;
+  return vueltaPax(v)*fare;
+}
+
+function computeDaily(rec, config){
+  const fare = config.fareByMonth[monthKeyOf(rec.date)] || 0;
+  const porCategoria = {corta:0,mediana:0,larga:0};
+  let totalPasajeros=0, kmVueltas=0, ingresoRealVueltas=0, ingresoEstimadoVueltas=0, totalCompletas=0, totalMedias=0;
+  rec.vueltas.forEach(v=>{
+    const cat=CATS.find(c=>c.id===v.categoria); if(!cat) return;
+    const tipo = v.tipo===undefined?"completa":v.tipo;
+    const pax = vueltaPax(v);
+    porCategoria[v.categoria]=(porCategoria[v.categoria]||0)+1;
+    if(tipo==="completa") totalCompletas++; else totalMedias++;
+    totalPasajeros+=pax; kmVueltas+=vueltaKm(v);
+    ingresoRealVueltas+=vueltaMonto(v,fare); ingresoEstimadoVueltas+=pax*fare;
+  });
+  const kmPersonales = rec.personales.reduce((s,p)=>s+(Number(p.km)||0),0);
+  const ingresoPersonal = rec.personales.reduce((s,p)=>s+(Number(p.ingreso)||0),0);
+  const bcv = Number(rec.bcvRate)||0;
+  let fuelUsd=0;
+  if(rec.fuel.tipo==="dolarizada") fuelUsd=(Number(rec.fuel.litros)||0)*config.fuelDolarizadaUsdPorLitro;
+  else if(rec.fuel.tipo==="subsidizada") fuelUsd=config.fuelSubsidizadaColaboracionUsd;
+  const fuelBs = bcv ? fuelUsd*bcv : 0;
+  const gastoOtros = rec.gastos.reduce((s,g)=>s+(Number(g.monto)||0),0);
+  const gastosPorTipo={}; GASTO_TIPOS.forEach(t=>gastosPorTipo[t]=0);
+  rec.gastos.forEach(g=>{ gastosPorTipo[g.tipo]=(gastosPorTipo[g.tipo]||0)+(Number(g.monto)||0); });
+  const totalGastos = fuelBs+gastoOtros;
+  const ingresoEstimado = ingresoEstimadoVueltas+ingresoPersonal;
+  const ingresoReal = ingresoRealVueltas+ingresoPersonal;
+  const diferenciaCobro = ingresoEstimado-ingresoReal;
+  const efectivo=Number(rec.cierre.efectivo)||0, pagoMovil=Number(rec.cierre.pagoMovil)||0;
+  const totalRecibido = efectivo+pagoMovil;
+  const diferenciaCaja = totalRecibido-ingresoReal;
+  const balance = totalRecibido-totalGastos;
+  const pasajeUsd = bcv ? fare/bcv : null;
+  return {fare,totalPasajeros,porCategoria,totalVueltas:rec.vueltas.length,totalCompletas,totalMedias,
+    kmVueltas,kmPersonales,kmTotal:kmVueltas+kmPersonales,ingresoPersonal,fuelUsd,fuelBs,gastoOtros,gastosPorTipo,
+    totalGastos,ingresoEstimado,ingresoReal,diferenciaCobro,diferenciaCaja,efectivo,pagoMovil,totalRecibido,balance,pasajeUsd,bcv};
+}
+function computeMonthly(monthKey, allDays, config){
+  const recs = Object.values(allDays).filter(r=>monthKeyOf(r.date)===monthKey).sort((a,b)=>a.date.localeCompare(b.date));
+  const agg = {totalVueltas:0,totalCompletas:0,totalMedias:0,porCategoria:{corta:0,mediana:0,larga:0},totalPasajeros:0,
+    kmVueltas:0,kmPersonales:0,ingresoPersonal:0,fuelBs:0,gastoOtros:0,gastosPorTipo:Object.fromEntries(GASTO_TIPOS.map(t=>[t,0])),
+    totalGastos:0,ingresoEstimado:0,ingresoReal:0,diferenciaCobro:0,diferenciaCaja:0,efectivo:0,pagoMovil:0,totalRecibido:0,
+    balance:0,bcvSum:0,bcvCount:0};
+  const chartData=[];
+  recs.forEach(r=>{
+    const d=computeDaily(r,config);
+    agg.totalVueltas+=d.totalVueltas; agg.totalCompletas+=d.totalCompletas; agg.totalMedias+=d.totalMedias;
+    CATS.forEach(c=>agg.porCategoria[c.id]+=d.porCategoria[c.id]||0);
+    agg.totalPasajeros+=d.totalPasajeros; agg.kmVueltas+=d.kmVueltas; agg.kmPersonales+=d.kmPersonales;
+    agg.ingresoPersonal+=d.ingresoPersonal; agg.fuelBs+=d.fuelBs; agg.gastoOtros+=d.gastoOtros;
+    GASTO_TIPOS.forEach(t=>agg.gastosPorTipo[t]+=d.gastosPorTipo[t]||0);
+    agg.totalGastos+=d.totalGastos; agg.ingresoEstimado+=d.ingresoEstimado; agg.ingresoReal+=d.ingresoReal;
+    agg.diferenciaCobro+=d.diferenciaCobro; agg.diferenciaCaja+=d.diferenciaCaja;
+    agg.efectivo+=d.efectivo; agg.pagoMovil+=d.pagoMovil; agg.totalRecibido+=d.totalRecibido; agg.balance+=d.balance;
+    if(r.bcvRate){ agg.bcvSum+=Number(r.bcvRate); agg.bcvCount++; }
+    chartData.push({dia:r.date.slice(8,10), tasa:r.bcvRate?Number(r.bcvRate):null, pasajeUsd: d.pasajeUsd?Number(d.pasajeUsd.toFixed(3)):null});
+  });
+  agg.bcvProm = agg.bcvCount ? agg.bcvSum/agg.bcvCount : null;
+  const dias = recs.length||1; agg.diasRegistrados=recs.length;
+  agg.promDiaVueltas=agg.totalVueltas/dias; agg.promDiaPasajeros=agg.totalPasajeros/dias;
+  agg.promDiaKm=(agg.kmVueltas+agg.kmPersonales)/dias; agg.promDiaFuelBs=agg.fuelBs/dias;
+  agg.promDiaGastoOtros=agg.gastoOtros/dias; agg.promDiaTotalGastos=agg.totalGastos/dias;
+  agg.promDiaIngresoReal=agg.ingresoReal/dias; agg.promDiaTotalRecibido=agg.totalRecibido/dias; agg.promDiaBalance=agg.balance/dias;
+  return {agg,recs,chartData};
+}
+
+/* ===================== Almacenamiento local ===================== */
+function lsGet(key){ try{ const v=localStorage.getItem(key); return v?JSON.parse(v):null; }catch(e){ return null; } }
+function lsSet(key,val){ try{ localStorage.setItem(key, JSON.stringify(val)); return true; }catch(e){ return false; } }
+function lsAllDays(){
+  const out={};
+  for(let i=0;i<localStorage.length;i++){
+    const k=localStorage.key(i);
+    if(k && k.startsWith("taxiday:")){
+      const v=lsGet(k); if(v && v.date) out[v.date]=v;
+    }
+  }
+  return out;
+}
+
+/* ===================== Estado global ===================== */
+let CONFIG = Object.assign({}, DEFAULT_CONFIG, lsGet("taxiconfig")||{});
+let ALLDAYS = lsAllDays();
+let CURRENT_DATE = todayStr();
+let RECORD = ALLDAYS[CURRENT_DATE] || blankRecord(CURRENT_DATE);
+let ACTIVE_TAB = "hoy";
+let DRAFT = null;
+let BCV_HIST = lsGet("taxibcvcache_map");
+let BCV_STATUS = BCV_HIST ? "ok" : "idle";
+let QUICK = {corta:"",mediana:"",larga:""};
+let PERSONAL_KM="", PERSONAL_ING="";
+let GASTO_TIPO=GASTO_TIPOS[0], GASTO_MONTO="", GASTO_NOTA="";
+let SELECTED_MONTH = monthKeyOf(todayStr());
+let SHOW_SETTINGS=false;
+let SAVED_FLASH=false;
+let SYNC_STATUS="idle", SYNC_MSG="";
+
+function saveConfig(next){ CONFIG=next; lsSet("taxiconfig", CONFIG); render(); }
+function persistRecord(){
+  lsSet("taxiday:"+RECORD.date, RECORD);
+  ALLDAYS[RECORD.date]=RECORD;
+  SAVED_FLASH=true; setTimeout(()=>{ SAVED_FLASH=false; },900);
+}
+function goToDate(d){
+  CURRENT_DATE=d; RECORD = ALLDAYS[d] ? JSON.parse(JSON.stringify(ALLDAYS[d])) : blankRecord(d);
+  ACTIVE_TAB="hoy"; render();
+  maybeAutoFillBcv();
+}
+function shiftDate(delta){
+  const [y,m,d]=RECORD.date.split("-").map(Number);
+  const dt=new Date(y,m-1,d+delta);
+  goToDate(`${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,"0")}-${String(dt.getDate()).padStart(2,"0")}`);
+}
+function setTab(t){ ACTIVE_TAB=t; render(); }
+
+/* ===================== Tasa BCV automatica ===================== */
+async function loadBcvHistorico(force){
+  if(!force){
+    const cached=lsGet("taxibcvcache");
+    if(cached && Date.now()-(cached.fetchedAt||0) < 6*60*60*1000 && cached.map && Object.keys(cached.map).length){
+      BCV_HIST=cached.map; BCV_STATUS="ok"; render(); return;
+    }
+  }
+  BCV_STATUS="loading"; render();
+  try{
+    const res = await fetch("https://ve.dolarapi.com/v1/historicos/dolares/oficial");
+    if(!res.ok) throw new Error("bad status");
+    const data = await res.json();
+    const map={};
+    (Array.isArray(data)?data:[]).forEach(item=>{
+      const d=normalizeApiDate(item.fecha);
+      const rate=item.promedio ?? item.venta ?? item.compra;
+      if(d && rate) map[d]=Number(rate);
+    });
+    if(Object.keys(map).length){
+      BCV_HIST=map; BCV_STATUS="ok";
+      lsSet("taxibcvcache", {fetchedAt:Date.now(), map});
+    } else { BCV_STATUS="empty"; }
+  }catch(e){ BCV_STATUS="error"; }
+  render();
+}
+function maybeAutoFillBcv(){
+  if(!BCV_HIST || RECORD.bcvRate) return;
+  const auto=BCV_HIST[RECORD.date];
+  if(auto){ RECORD.bcvRate=auto; persistRecord(); render(); }
+}
+
+/* ===================== Vueltas: carga rapida y borrador ===================== */
+function addQuickVueltas(){
+  const entries=[];
+  CATS.forEach(c=>{
+    const n=Math.max(0, Math.floor(Number(QUICK[c.id])||0));
+    for(let i=0;i<n;i++) entries.push({id:uid(),categoria:c.id,tipo:"completa",pasajerosIda:0,pasajerosVuelta:0,ajuste:0,monto:0,ts:Date.now()});
+  });
+  if(!entries.length) return;
+  RECORD.vueltas=RECORD.vueltas.concat(entries);
+  QUICK={corta:"",mediana:"",larga:""};
+  persistRecord(); render();
+}
+function setQuick(catId,val){ QUICK[catId]=val; }
+function openDraft(catId){
+  DRAFT={categoria:catId,tipo:"completa",direccion:"ida",pasajerosIda:0,pasajerosVuelta:0,pasajeros:0,ajuste:0,cantidad:1};
+  render();
+}
+function cancelDraft(){ DRAFT=null; render(); }
+function draftPax(d){ return d.tipo==="completa" ? (Number(d.pasajerosIda)||0)+(Number(d.pasajerosVuelta)||0) : (Number(d.pasajeros)||0); }
+function fareThisMonth(){ return CONFIG.fareByMonth[monthKeyOf(RECORD.date)]; }
+function draftEsperado(d){ const f=fareThisMonth(); return f?draftPax(d)*f:0; }
+function bumpDraft(field,delta){
+  if(!DRAFT) return;
+  const min = field==="cantidad"?1:0;
+  DRAFT[field]=Math.max(min,(Number(DRAFT[field])||0)+delta);
+  render();
+}
+function setDraftTipo(tipo){ if(DRAFT){ DRAFT.tipo=tipo; render(); } }
+function setDraftDireccion(dir){ if(DRAFT){ DRAFT.direccion=dir; render(); } }
+function setDraftAjuste(val){ if(DRAFT){ DRAFT.ajuste=val; } }
+function commitDraft(){
+  if(!DRAFT) return;
+  const esperado=draftEsperado(DRAFT), ajuste=Number(DRAFT.ajuste)||0, cantidad=Math.max(1,Number(DRAFT.cantidad)||1);
+  const nuevas=Array.from({length:cantidad},()=>({
+    id:uid(), categoria:DRAFT.categoria, tipo:DRAFT.tipo,
+    direccion: DRAFT.tipo==="media"?DRAFT.direccion:undefined,
+    pasajerosIda: DRAFT.tipo==="completa"?Number(DRAFT.pasajerosIda)||0:undefined,
+    pasajerosVuelta: DRAFT.tipo==="completa"?Number(DRAFT.pasajerosVuelta)||0:undefined,
+    pasajeros: DRAFT.tipo==="media"?Number(DRAFT.pasajeros)||0:undefined,
+    ajuste, monto:esperado+ajuste, ts:Date.now(),
+  }));
+  RECORD.vueltas=RECORD.vueltas.concat(nuevas);
+  DRAFT=null; persistRecord(); render();
+}
+function removeVuelta(id){ RECORD.vueltas=RECORD.vueltas.filter(v=>v.id!==id); persistRecord(); render(); }
+
+/* ===================== Carreras personales ===================== */
+function addPersonal(){
+  if(!PERSONAL_KM) return;
+  RECORD.personales.push({id:uid(), km:Number(PERSONAL_KM), ingreso:Number(PERSONAL_ING)||0});
+  PERSONAL_KM=""; PERSONAL_ING=""; persistRecord(); render();
+}
+function removePersonal(id){ RECORD.personales=RECORD.personales.filter(p=>p.id!==id); persistRecord(); render(); }
+
+/* ===================== Combustible ===================== */
+function litrosPorKm(){ return CONFIG.litrosVueltaCorta / CATS.find(c=>c.id==="corta").km; }
+function estimatedLitros(){ return computeDaily(RECORD,CONFIG).kmTotal * litrosPorKm(); }
+function setFuelTipo(tipo){
+  RECORD.fuel.tipo=tipo;
+  if(!RECORD.fuel.litros) RECORD.fuel.litros=estimatedLitros().toFixed(1);
+  persistRecord(); render();
+}
+function setFuelLitros(val){ RECORD.fuel.litros=val; persistRecord(); render(); }
+function recalcLitros(){ RECORD.fuel.litros=estimatedLitros().toFixed(1); persistRecord(); render(); }
+
+/* ===================== Otros gastos ===================== */
+function addGasto(){
+  if(!GASTO_MONTO) return;
+  RECORD.gastos.push({id:uid(), tipo:GASTO_TIPO, monto:Number(GASTO_MONTO), nota:GASTO_NOTA});
+  GASTO_MONTO=""; GASTO_NOTA=""; persistRecord(); render();
+}
+function removeGasto(id){ RECORD.gastos=RECORD.gastos.filter(g=>g.id!==id); persistRecord(); render(); }
+
+/* ===================== Cierre y BCV manual ===================== */
+function setBcv(val){ RECORD.bcvRate=val; persistRecord(); render(); }
+function setCierre(field,val){ RECORD.cierre[field]=val; persistRecord(); render(); }
+function setFareForMonth(mk,val){ const next=Object.assign({},CONFIG,{fareByMonth:Object.assign({},CONFIG.fareByMonth,{[mk]:Number(val)||0})}); saveConfig(next); }
+
+/* ===================== Exportar a Excel ===================== */
+function exportExcel(scopeMonth){
+  const allRecs = Object.values(ALLDAYS).filter(r=>!scopeMonth || monthKeyOf(r.date)===scopeMonth).sort((a,b)=>a.date.localeCompare(b.date));
+  const resumen = allRecs.map(r=>{
+    const d=computeDaily(r,CONFIG);
+    return {Fecha:r.date,"Tasa BCV (Bs/$)":r.bcvRate||"","Pasaje (Bs)":d.fare,"Pasaje real ($)":d.pasajeUsd?Number(d.pasajeUsd.toFixed(4)):"",
+      "Vueltas cortas":d.porCategoria.corta,"Vueltas medianas":d.porCategoria.mediana,"Vueltas largas":d.porCategoria.larga,
+      "Vueltas completas":d.totalCompletas,"Medias vueltas":d.totalMedias,"Total pasajeros":d.totalPasajeros,
+      "Km recorrido (vueltas)":Number(d.kmVueltas.toFixed(1)),"Km personales":Number(d.kmPersonales.toFixed(1)),
+      "Ingreso carreras personales (Bs)":d.ingresoPersonal,"Gasto combustible (Bs)":Number(d.fuelBs.toFixed(2)),
+      "Gasto otros (Bs)":Number(d.gastoOtros.toFixed(2)),"Total gastos (Bs)":Number(d.totalGastos.toFixed(2)),
+      "Ingreso estimado - pasaje oficial (Bs)":Number(d.ingresoEstimado.toFixed(2)),"Ingreso real registrado (Bs)":Number(d.ingresoReal.toFixed(2)),
+      "Diferencia por pagos parciales (Bs)":Number(d.diferenciaCobro.toFixed(2)),"Efectivo (Bs)":d.efectivo,"Pago movil (Bs)":d.pagoMovil,
+      "Total recibido (Bs)":Number(d.totalRecibido.toFixed(2)),"Diferencia de caja (Bs)":Number(d.diferenciaCaja.toFixed(2)),
+      "Balance dia (Bs)":Number(d.balance.toFixed(2))};
+  });
+  const vueltasDetalle=[];
+  allRecs.forEach(r=>{
+    const fare=CONFIG.fareByMonth[monthKeyOf(r.date)]||0;
+    r.vueltas.forEach(v=>{
+      const cat=CATS.find(c=>c.id===v.categoria); const tipo=v.tipo===undefined?"completa":v.tipo;
+      vueltasDetalle.push({Fecha:r.date,Categoria:cat?cat.label:v.categoria,Tipo:tipo==="completa"?"Vuelta completa":"Media vuelta",
+        Direccion: tipo==="media" ? (v.direccion==="vuelta"?"Destino -> Urb.":"Urb. -> destino") : "",
+        "Km recorrido":Number(vueltaKm(v).toFixed(1)),"Pax ida":tipo==="completa"?(v.pasajerosIda??""):"",
+        "Pax vuelta":tipo==="completa"?(v.pasajerosVuelta??""):"","Pax tramo":tipo==="media"?(v.pasajeros??""):"",
+        "Total pasajeros":vueltaPax(v),"Monto esperado (Bs)":Number((vueltaPax(v)*fare).toFixed(2)),
+        "Monto recibido (Bs)":Number(vueltaMonto(v,fare).toFixed(2)),"Faltante (Bs)":v.ajuste!==undefined?Number(v.ajuste):""});
+    });
+  });
+  const gastosDetalle=[];
+  allRecs.forEach(r=>r.gastos.forEach(g=>gastosDetalle.push({Fecha:r.date,Tipo:g.tipo,"Monto (Bs)":g.monto,Nota:g.nota||""})));
+  const personalesDetalle=[];
+  allRecs.forEach(r=>r.personales.forEach(p=>personalesDetalle.push({Fecha:r.date,"Km recorrido":p.km,"Ingreso (Bs)":p.ingreso||0})));
+  const months=[...new Set(allRecs.map(r=>monthKeyOf(r.date)))];
+  const resumenMensual=months.map(mk=>{
+    const {agg}=computeMonthly(mk,ALLDAYS,CONFIG);
+    const row={Mes:mk,"Total vueltas":agg.totalVueltas,"Vueltas completas":agg.totalCompletas,"Medias vueltas":agg.totalMedias,
+      Cortas:agg.porCategoria.corta,Medianas:agg.porCategoria.mediana,Largas:agg.porCategoria.larga,"Total pasajeros":agg.totalPasajeros,
+      "Km total aprox":Number((agg.kmVueltas+agg.kmPersonales).toFixed(1)),"Gasto combustible (Bs)":Number(agg.fuelBs.toFixed(2))};
+    GASTO_TIPOS.forEach(t=>{ row[`Gasto - ${t} (Bs)`]=Number((agg.gastosPorTipo[t]||0).toFixed(2)); });
+    Object.assign(row,{"Total otros gastos (Bs)":Number(agg.gastoOtros.toFixed(2)),"Total gastos (Bs)":Number(agg.totalGastos.toFixed(2)),
+      "Ingreso estimado (Bs)":Number(agg.ingresoEstimado.toFixed(2)),"Ingreso real (Bs)":Number(agg.ingresoReal.toFixed(2)),
+      "Diferencia cobro (Bs)":Number(agg.diferenciaCobro.toFixed(2)),"Total recibido (Bs)":Number(agg.totalRecibido.toFixed(2)),
+      "Diferencia caja (Bs)":Number(agg.diferenciaCaja.toFixed(2)),"Balance (Bs)":Number(agg.balance.toFixed(2)),
+      "Dias registrados":agg.diasRegistrados,"Prom. vueltas/dia":Number(agg.promDiaVueltas.toFixed(2)),
+      "Prom. km/dia":Number(agg.promDiaKm.toFixed(2)),"Prom. combustible/dia (Bs)":Number(agg.promDiaFuelBs.toFixed(2)),
+      "Prom. recibido/dia (Bs)":Number(agg.promDiaTotalRecibido.toFixed(2)),"Prom. balance/dia (Bs)":Number(agg.promDiaBalance.toFixed(2)),
+      "Tasa BCV promedio":agg.bcvProm?Number(agg.bcvProm.toFixed(2)):"","Pasaje del mes (Bs)":CONFIG.fareByMonth[mk]||""});
+    return row;
+  });
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(resumenMensual), "Resumen mensual");
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(resumen), "Resumen diario");
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(vueltasDetalle), "Detalle vueltas");
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(gastosDetalle), "Detalle gastos");
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(personalesDetalle), "Carreras personales");
+  XLSX.writeFile(wb, scopeMonth?`control_taxi_${scopeMonth}.xlsx`:"control_taxi_completo.xlsx");
+}
+
+/* ===================== Sincronizacion con Google Sheets ===================== */
+async function syncUpload(){
+  if(!CONFIG.syncUrl){ SYNC_STATUS="error"; SYNC_MSG="Configura primero el enlace de sincronizacion en Ajustes."; render(); return; }
+  SYNC_STATUS="syncing"; SYNC_MSG="Subiendo..."; render();
+  try{
+    const payload={type:"upload", days:ALLDAYS, config:CONFIG};
+    const res = await fetch(CONFIG.syncUrl, {method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"}, body:JSON.stringify(payload)});
+    const data = await res.json();
+    if(data && data.ok){ SYNC_STATUS="ok"; SYNC_MSG="Subido correctamente: "+new Date().toLocaleTimeString(); }
+    else throw new Error("respuesta invalida");
+  }catch(e){ SYNC_STATUS="error"; SYNC_MSG="No se pudo subir. Revisa tu conexion o el enlace configurado."; }
+  render();
+}
+async function syncDownload(){
+  if(!CONFIG.syncUrl){ SYNC_STATUS="error"; SYNC_MSG="Configura primero el enlace de sincronizacion en Ajustes."; render(); return; }
+  SYNC_STATUS="syncing"; SYNC_MSG="Bajando..."; render();
+  try{
+    const res = await fetch(CONFIG.syncUrl+"?action=download");
+    const data = await res.json();
+    if(data && data.days){
+      Object.values(data.days).forEach(rec=>{ ALLDAYS[rec.date]=rec; lsSet("taxiday:"+rec.date, rec); });
+      if(data.config) saveConfig(Object.assign({}, CONFIG, data.config));
+      RECORD = ALLDAYS[CURRENT_DATE] || blankRecord(CURRENT_DATE);
+      SYNC_STATUS="ok"; SYNC_MSG="Datos bajados correctamente: "+new Date().toLocaleTimeString();
+    } else throw new Error("respuesta invalida");
+  }catch(e){ SYNC_STATUS="error"; SYNC_MSG="No se pudo bajar. Revisa tu conexion o el enlace configurado."; }
+  render();
+}
+
+/* ===================== Render ===================== */
+function Section(title, iconHtml, innerHtml, id){
+  return `<div class="card"${id?` id="${id}"`:""}><div class="card-title">${iconHtml}<span>${esc(title)}</span></div>${innerHtml}</div>`;
+}
+function renderOdometer(value){
+  const str=Math.max(0,Math.round(value)).toString().padStart(6,"0").slice(-6);
+  return str.split("").map(d=>`<span class="odo-digit">${d}</span>`).join("");
+}
+function renderHeader(){
+  const daily=computeDaily(RECORD,CONFIG);
+  return `
+  <div class="header">
+    <div class="header-top">
+      <div><div class="brand-eyebrow">CONTROL DIARIO</div><div class="brand-title">Taxi por puesto</div></div>
+      <button class="icon-btn" onclick="SHOW_SETTINGS=true;render();" title="Ajustes">⚙</button>
+    </div>
+    <div class="odo-row">
+      <div class="odo-label">RECIBIDO HOY (BS)</div>
+      ${renderOdometer(daily.totalRecibido)}
+      ${SAVED_FLASH?'<span class="saved-flash">✓ guardado</span>':""}
+    </div>
+  </div>
+  <div class="tabs">
+    <button class="tab ${ACTIVE_TAB==="hoy"?"active":""}" onclick="setTab('hoy')">Registrar</button>
+    <button class="tab ${ACTIVE_TAB==="historial"?"active":""}" onclick="setTab('historial')">Historial</button>
+    <button class="tab ${ACTIVE_TAB==="mensual"?"active":""}" onclick="setTab('mensual')">Mensual</button>
+  </div>`;
+}
+
+function renderHoy(){
+  const daily = computeDaily(RECORD, CONFIG);
+  const fare = fareThisMonth();
+  const estLitros = estimatedLitros();
+  let html = `<div class="tab-body">`;
+
+  html += `<div class="date-row">
+    <button class="icon-btn" onclick="shiftDate(-1)">‹</button>
+    <div class="date-field">📅 <input type="date" class="date-input" value="${RECORD.date}" onchange="goToDate(this.value)"/></div>
+    <button class="icon-btn" onclick="shiftDate(1)">›</button>
+    ${RECORD.date!==todayStr() ? `<button class="today-btn" onclick="goToDate(todayStr())">Hoy</button>` : ""}
+  </div>
+  <div class="date-hint">Toca las flechas o el calendario para cargar cualquier dia pasado y llenarlo con tus datos.</div>`;
+
+  html += Section("Tasa BCV del dia", `<span class="sec-badge">$</span>`, `
+    <label class="field-label">Precio dolar oficial (Bs/$)</label>
+    <div class="inline-form">
+      <input type="number" inputmode="decimal" placeholder="Ej: 764.35" value="${esc(RECORD.bcvRate)}" onchange="setBcv(this.value)" class="input flex1"/>
+      <button class="icon-btn" onclick="loadBcvHistorico(true)" title="Actualizar tasas BCV">${BCV_STATUS==="loading"?'<span class="spin">↻</span>':"↻"}</button>
+    </div>
+    ${BCV_STATUS==="ok" && BCV_HIST && BCV_HIST[RECORD.date] && Number(RECORD.bcvRate)===BCV_HIST[RECORD.date] ? `<div class="fare-info" style="color:var(--green)">Tasa BCV oficial de este dia, obtenida automaticamente.</div>` : ""}
+    ${BCV_STATUS==="loading" ? `<div class="fare-info">Buscando tasa BCV oficial...</div>` : ""}
+    ${BCV_STATUS==="error" ? `<div class="fare-warning">⚠ No se pudo conectar para traer la tasa BCV automatica. Ingresala manualmente o toca el boton para reintentar.</div>` : ""}
+    ${fare ? `<div class="fare-info">Pasaje de este mes: <strong>${fmtBs(fare)}</strong>${RECORD.bcvRate?` &middot; valor real: <strong>${fmtUsd(daily.pasajeUsd)}</strong>`:""}</div>`
+           : `<div class="fare-warning">⚠ No has configurado el pasaje de ${monthKeyOf(RECORD.date)}. Ajustalo en Ajustes.</div>`}
+  `);
+
+  html += Section("Vueltas", "🚕", `
+    <div class="quick-load">
+      <div class="field-label" style="margin-top:0">Carga rapida por total &middot; util para reconstruir un dia completo (sin pasajeros, vuelta completa)</div>
+      <div class="quick-load-row">
+        ${CATS.map(c=>`<div class="quick-load-col"><span class="field-label" style="margin:0">${c.label}</span><input type="number" min="0" inputmode="numeric" placeholder="0" class="input" value="${esc(QUICK[c.id])}" oninput="setQuick('${c.id}',this.value)"/></div>`).join("")}
+      </div>
+      <button class="add-btn full" onclick="addQuickVueltas()">+ Agregar vueltas completas</button>
+    </div>
+    <div class="cat-grid">
+      ${CATS.map(c=>`<button class="cat-btn" onclick="openDraft('${c.id}')"><span class="cat-btn-label">${c.label}</span><span class="cat-btn-km">${c.km} km</span>+</button>`).join("")}
+    </div>
+    ${DRAFT ? renderDraft() : ""}
+    ${RECORD.vueltas.length ? `<div class="list">${RECORD.vueltas.map(v=>{
+        const cat=CATS.find(c=>c.id===v.categoria); const tipo=v.tipo===undefined?"completa":v.tipo;
+        const pax=vueltaPax(v), km=vueltaKm(v), monto=vueltaMonto(v,fare||0), esperado=pax*(fare||0);
+        const under = fare && monto < esperado-0.5;
+        return `<div class="list-row">
+          <div class="list-main"><span class="list-tag">${cat.label} &middot; ${tipo==="completa"?"completa":("media, "+(v.direccion==="vuelta"?"vuelta":"ida"))}</span><span class="list-sub">${pax} pax &middot; ${km.toFixed(1)} km</span></div>
+          <div class="list-main"><span class="list-tag ${under?"neg":""}">${fmtBs(monto)}</span>${under?`<span class="list-sub neg">de ${fmtBs(esperado)} esperado</span>`:""}</div>
+          <button class="del-btn" onclick="removeVuelta('${v.id}')">🗑</button>
+        </div>`;
+      }).join("")}</div>` : ""}
+    <div class="fare-info">${daily.totalCompletas} completas &middot; ${daily.totalMedias} medias &middot; ${daily.totalPasajeros} pasajeros &middot; ${daily.kmVueltas.toFixed(1)} km</div>
+  `);
+
+  html += Section("Carreras personales", "👤", `
+    <div class="inline-form">
+      <input type="number" inputmode="decimal" placeholder="Km recorrido" value="${esc(PERSONAL_KM)}" oninput="PERSONAL_KM=this.value" class="input flex1"/>
+      <input type="number" inputmode="decimal" placeholder="Ingreso Bs (opcional)" value="${esc(PERSONAL_ING)}" oninput="PERSONAL_ING=this.value" class="input flex1"/>
+      <button class="add-btn" onclick="addPersonal()">+</button>
+    </div>
+    ${RECORD.personales.length ? `<div class="list">${RECORD.personales.map(p=>`<div class="list-row"><span class="list-tag">${p.km} km</span><span class="list-sub">${p.ingreso?fmtBs(p.ingreso):"sin ingreso"}</span><button class="del-btn" onclick="removePersonal('${p.id}')">🗑</button></div>`).join("")}</div>` : ""}
+  `);
+
+  html += Section("Combustible", "⛽", `
+    <div class="radio-row">
+      <button class="radio-pill ${RECORD.fuel.tipo==="dolarizada"?"active":""}" onclick="setFuelTipo('dolarizada')">Dolarizada (${fmtUsd(CONFIG.fuelDolarizadaUsdPorLitro)}/L)</button>
+      <button class="radio-pill ${RECORD.fuel.tipo==="subsidizada"?"active":""}" onclick="setFuelTipo('subsidizada')">Subsidiada (colab. ${fmtUsd(CONFIG.fuelSubsidizadaColaboracionUsd)})</button>
+    </div>
+    ${RECORD.fuel.tipo ? `
+      <div class="inline-form">
+        <div class="flex1"><label class="field-label">Litros (estimados segun tu km de hoy, ajustalos si sabes la cifra exacta)</label>
+        <input type="number" min="0" max="50" inputmode="decimal" placeholder="Litros" value="${esc(RECORD.fuel.litros)}" onchange="setFuelLitros(this.value)" class="input"/></div>
+        <button class="icon-btn" title="Recalcular con el km de hoy" onclick="recalcLitros()">↻</button>
+      </div>
+      <div class="fare-info">Estimado: ${daily.kmTotal.toFixed(1)} km &times; ${litrosPorKm().toFixed(4)} L/km = ${estLitros.toFixed(2)} L &middot; basado en ${CONFIG.litrosVueltaCorta} L medidos en una vuelta corta (8.1 km)</div>
+      <div class="fare-info">Costo: ${fmtUsd(daily.fuelUsd)} ${RECORD.bcvRate?` &middot; ${fmtBs(daily.fuelBs)}`:"(falta tasa BCV)"}</div>
+    ` : ""}
+  `);
+
+  html += Section("Otros gastos (Bs)", `<span class="sec-badge">Bs</span>`, `
+    <label class="field-label">Tipo de gasto</label>
+    <select class="input" onchange="GASTO_TIPO=this.value">${GASTO_TIPOS.map(t=>`<option value="${esc(t)}" ${t===GASTO_TIPO?"selected":""}>${esc(t)}</option>`).join("")}</select>
+    <label class="field-label">Monto (Bs) &middot; lo que pagaste por este gasto</label>
+    <input type="number" inputmode="decimal" placeholder="0.00" value="${esc(GASTO_MONTO)}" oninput="GASTO_MONTO=this.value" class="input"/>
+    <label class="field-label">Nota (opcional)</label>
+    <input type="text" placeholder="Ej: cambio de aceite completo" value="${esc(GASTO_NOTA)}" oninput="GASTO_NOTA=this.value" class="input"/>
+    <button class="add-btn full" onclick="addGasto()">+ Agregar gasto</button>
+    ${RECORD.gastos.length ? `<div class="list">${RECORD.gastos.map(g=>`<div class="list-row"><span class="list-tag">${esc(g.tipo)}</span><span class="list-sub">${fmtBs(g.monto)}${g.nota?" · "+esc(g.nota):""}</span><button class="del-btn" onclick="removeGasto('${g.id}')">🗑</button></div>`).join("")}</div>` : ""}
+  `);
+
+  html += Section("Cierre del dia", "💰", `
+    <div class="inline-form">
+      <div class="flex1"><label class="field-label">Efectivo (Bs)</label><input type="number" inputmode="decimal" placeholder="0.00" value="${esc(RECORD.cierre.efectivo)}" onchange="setCierre('efectivo',this.value)" class="input"/></div>
+      <div class="flex1"><label class="field-label">Pago movil (Bs)</label><input type="number" inputmode="decimal" placeholder="0.00" value="${esc(RECORD.cierre.pagoMovil)}" onchange="setCierre('pagoMovil',this.value)" class="input"/></div>
+    </div>
+  `);
+
+  html += `<div class="summary-card">
+    <div class="summary-row"><span>Ingreso estimado (pasaje oficial)</span><span>${fmtBs(daily.ingresoEstimado)}</span></div>
+    <div class="summary-row"><span>Ingreso real registrado</span><span>${fmtBs(daily.ingresoReal)}</span></div>
+    ${Math.abs(daily.diferenciaCobro)>0.5 ? `<div class="summary-row"><span>Diferencia por pagos parciales</span><span class="neg">-${fmtBs(daily.diferenciaCobro)}</span></div>` : ""}
+    <div class="summary-row"><span>Total gastos</span><span class="neg">${fmtBs(daily.totalGastos)}</span></div>
+    <div class="summary-row"><span>Total recibido (efectivo + pago movil)</span><span>${fmtBs(daily.totalRecibido)}</span></div>
+    ${Math.abs(daily.diferenciaCaja)>0.5 ? `<div class="summary-row"><span>Diferencia de caja vs. lo registrado</span><span class="${daily.diferenciaCaja<0?"neg":"pos"}">${fmtBs(daily.diferenciaCaja)}</span></div><div class="date-hint" style="margin-top:-4px;margin-bottom:4px;">Una diferencia pequena es normal si algun pasajero pago mixto (parte efectivo, parte pago movil).</div>` : ""}
+    <div class="summary-row total"><span>Balance del dia</span><span class="${daily.balance<0?"neg":"pos"}">${fmtBs(daily.balance)}</span></div>
+    ${RECORD.bcvRate ? `<div class="balance-usd">≈ ${fmtUsd(daily.balance/Number(RECORD.bcvRate))} segun la tasa de hoy</div>` : `<div class="date-hint">Registra la tasa BCV de hoy para ver el balance en dolares.</div>`}
+  </div>`;
+
+  html += `</div>`;
+  return html;
+}
+
+function renderDraft(){
+  const d=DRAFT; const cat=CATS.find(c=>c.id===d.categoria);
+  const esperado=draftEsperado(d), recibido=esperado+(Number(d.ajuste)||0);
+  return `<div class="draft-card">
+    <div class="draft-head"><span>${cat.label}</span><button class="icon-btn" onclick="cancelDraft()">✕</button></div>
+    <div class="radio-row">
+      <button class="radio-pill ${d.tipo==="completa"?"active":""}" onclick="setDraftTipo('completa')">Vuelta completa</button>
+      <button class="radio-pill ${d.tipo==="media"?"active":""}" onclick="setDraftTipo('media')">Media vuelta</button>
+    </div>
+    ${d.tipo==="media" ? `<div class="radio-row" style="margin-top:8px">
+      <button class="radio-pill ${d.direccion==="ida"?"active":""}" onclick="setDraftDireccion('ida')">Ida (Urb. → destino)</button>
+      <button class="radio-pill ${d.direccion==="vuelta"?"active":""}" onclick="setDraftDireccion('vuelta')">Vuelta (destino → Urb.)</button>
+    </div>` : ""}
+    ${d.tipo==="completa" ? `<div class="pax-row">
+      <div class="pax-col"><span class="field-label">Pax ida</span><div class="stepper"><button onclick="bumpDraft('pasajerosIda',-1)">-</button><span>${d.pasajerosIda}</span><button onclick="bumpDraft('pasajerosIda',1)">+</button></div></div>
+      <div class="pax-col"><span class="field-label">Pax vuelta</span><div class="stepper"><button onclick="bumpDraft('pasajerosVuelta',-1)">-</button><span>${d.pasajerosVuelta}</span><button onclick="bumpDraft('pasajerosVuelta',1)">+</button></div></div>
+    </div>` : `<div class="pax-col" style="margin-top:8px"><span class="field-label">Pasajeros de ese tramo</span><div class="stepper"><button onclick="bumpDraft('pasajeros',-1)">-</button><span>${d.pasajeros}</span><button onclick="bumpDraft('pasajeros',1)">+</button></div></div>`}
+    <label class="field-label">Cantidad de vueltas iguales a agregar</label>
+    <div class="stepper"><button onclick="bumpDraft('cantidad',-1)">-</button><span>${d.cantidad}</span><button onclick="bumpDraft('cantidad',1)">+</button></div>
+    <label class="field-label">Faltante o diferencia (Bs) &middot; deja 0 si pago completo, escribe -20 si faltaron 20 Bs</label>
+    <input type="number" inputmode="decimal" class="input" value="${esc(d.ajuste)}" onchange="setDraftAjuste(this.value);render();"/>
+    <div class="fare-info">Esperado por vuelta: ${fmtBs(esperado)} &middot; Recibido por vuelta: ${fmtBs(recibido)}${d.cantidad>1?` &middot; x${d.cantidad} = ${fmtBs(recibido*d.cantidad)}`:""}</div>
+    ${!fareThisMonth() ? `<div class="fare-warning" style="margin-top:8px">⚠ Configura el pasaje del mes para calcular el esperado.</div>` : ""}
+    ${draftPax(d)<=0 ? `<div class="date-hint" style="margin-top:4px">Sin pasajeros registrados en esta vuelta — util si no recuerdas la cantidad exacta, pero no sumara al ingreso estimado.</div>` : ""}
+    <button class="add-btn full" onclick="commitDraft()">+ Agregar ${d.cantidad>1?d.cantidad+" vueltas":"vuelta"}</button>
+  </div>`;
+}
+
+function renderHistorial(){
+  const dates = Object.keys(ALLDAYS).sort((a,b)=>b.localeCompare(a));
+  let html = `<div class="tab-body">
+    <div class="card">
+      <div class="card-title">📅<span>Agregar un dia anterior</span></div>
+      <div class="field-label">Elige la fecha que anotaste en tu hoja y se abrira lista para llenar</div>
+      <input type="date" class="input" value="" max="${todayStr()}" onchange="if(this.value) goToDate(this.value)"/>
+    </div>`;
+  if(!dates.length) html += `<div class="empty-note">Aun no hay dias registrados.</div>`;
+  html += `<div class="list">`;
+  dates.forEach(d=>{
+    const r=ALLDAYS[d]; const dd=computeDaily(r,CONFIG);
+    const complete = r.bcvRate && (r.vueltas.length||r.personales.length) && (r.cierre.efectivo||r.cierre.pagoMovil);
+    html += `<button class="hist-row" onclick="goToDate('${d}')">
+      <div class="hist-date">${d} ${!complete?'<span class="hist-flag">incompleto</span>':""}</div>
+      <div class="hist-stats"><span>${dd.totalVueltas} vueltas</span><span>${fmtBs(dd.totalRecibido)}</span><span class="${dd.balance<0?"neg":"pos"}">${fmtBs(dd.balance)}</span></div>
+    </button>`;
+  });
+  html += `</div></div>`;
+  return html;
+}
+
+function renderMensual(){
+  const monthly = computeMonthly(SELECTED_MONTH, ALLDAYS, CONFIG);
+  const dim = daysInMonth(SELECTED_MONTH);
+  let html = `<div class="tab-body">
+    <div class="month-nav">
+      <button class="icon-btn" onclick="SELECTED_MONTH=shiftMonthKey(SELECTED_MONTH,-1);render();">‹</button>
+      <span class="month-label">${SELECTED_MONTH}</span>
+      <button class="icon-btn" onclick="SELECTED_MONTH=shiftMonthKey(SELECTED_MONTH,1);render();">›</button>
+    </div>`;
+
+  html += Section("Pasaje del mes", `<span class="sec-badge">Bs</span>`, `
+    <div class="inline-form">
+      <input type="number" inputmode="decimal" placeholder="Ej: 370" value="${esc(CONFIG.fareByMonth[SELECTED_MONTH]||"")}" onchange="setFareForMonth('${SELECTED_MONTH}',this.value)" class="input flex1"/>
+      ${monthly.agg.bcvProm ? `<div class="fare-info" style="margin:0">Sugerido ~${Math.round((CONFIG.metaPasajeUsd*monthly.agg.bcvProm)/10)*10} Bs</div>` : ""}
+    </div>
+  `);
+
+  html += Section("Dias del mes", "📅", `
+    <div class="day-grid">${Array.from({length:dim},(_,i)=>{
+      const dd=String(i+1).padStart(2,"0"); const dateStr=`${SELECTED_MONTH}-${dd}`; const exists=!!ALLDAYS[dateStr];
+      return `<button class="day-chip ${exists?"ok":"missing"}" onclick="goToDate('${dateStr}')" title="${dateStr}">${i+1}</button>`;
+    }).join("")}</div>
+    <div class="legend-row"><span><span class="legend-dot ok"></span>registrado</span><span><span class="legend-dot missing"></span>falta</span></div>
+  `);
+
+  html += `<div class="stat-grid">
+    <div class="stat-card"><div class="stat-label">Vueltas (completas / medias)</div><div class="stat-value small">${monthly.agg.totalCompletas} / ${monthly.agg.totalMedias}</div></div>
+    <div class="stat-card"><div class="stat-label">Pasajeros</div><div class="stat-value">${monthly.agg.totalPasajeros}</div></div>
+    <div class="stat-card"><div class="stat-label">Ingreso estimado</div><div class="stat-value small">${fmtBs(monthly.agg.ingresoEstimado)}</div></div>
+    <div class="stat-card"><div class="stat-label">Ingreso real registrado</div><div class="stat-value small">${fmtBs(monthly.agg.ingresoReal)}</div></div>
+    <div class="stat-card"><div class="stat-label">Diferencia por pagos parciales</div><div class="stat-value small neg">${fmtBs(monthly.agg.diferenciaCobro)}</div></div>
+    <div class="stat-card"><div class="stat-label">Total recibido</div><div class="stat-value small">${fmtBs(monthly.agg.totalRecibido)}</div></div>
+    <div class="stat-card"><div class="stat-label">Gasto combustible</div><div class="stat-value small">${fmtBs(monthly.agg.fuelBs)}</div></div>
+    <div class="stat-card"><div class="stat-label">Otros gastos</div><div class="stat-value small">${fmtBs(monthly.agg.gastoOtros)}</div></div>
+    <div class="stat-card wide"><div class="stat-label">Balance del mes</div><div class="stat-value ${monthly.agg.balance<0?"neg":"pos"}">${fmtBs(monthly.agg.balance)}</div></div>
+  </div>`;
+
+  html += Section(`Promedio diario (sobre ${monthly.agg.diasRegistrados} dias registrados)`, `<span class="sec-badge">/</span>`, `
+    <div class="stat-grid">
+      <div class="stat-card"><div class="stat-label">Vueltas / dia</div><div class="stat-value small">${monthly.agg.promDiaVueltas.toFixed(1)}</div></div>
+      <div class="stat-card"><div class="stat-label">Pasajeros / dia</div><div class="stat-value small">${monthly.agg.promDiaPasajeros.toFixed(1)}</div></div>
+      <div class="stat-card"><div class="stat-label">Km / dia</div><div class="stat-value small">${monthly.agg.promDiaKm.toFixed(1)}</div></div>
+      <div class="stat-card"><div class="stat-label">Combustible / dia</div><div class="stat-value small">${fmtBs(monthly.agg.promDiaFuelBs)}</div></div>
+      <div class="stat-card"><div class="stat-label">Otros gastos / dia</div><div class="stat-value small">${fmtBs(monthly.agg.promDiaGastoOtros)}</div></div>
+      <div class="stat-card"><div class="stat-label">Recibido / dia</div><div class="stat-value small">${fmtBs(monthly.agg.promDiaTotalRecibido)}</div></div>
+      <div class="stat-card wide"><div class="stat-label">Balance / dia</div><div class="stat-value small ${monthly.agg.promDiaBalance<0?"neg":"pos"}">${fmtBs(monthly.agg.promDiaBalance)}</div></div>
+    </div>
+  `);
+
+  html += Section("Gastos por categoria (el mes)", `<span class="sec-badge">Bs</span>`, `
+    <div class="list">
+      ${GASTO_TIPOS.map(t=>`<div class="list-row"><span class="list-tag" style="flex:1">${esc(t)}</span><span class="list-sub" style="flex:none;color:var(--text)">${fmtBs(monthly.agg.gastosPorTipo[t])}</span></div>`).join("")}
+      <div class="list-row" style="border-color:var(--yellow-dim)"><span class="list-tag" style="flex:1">Combustible</span><span class="list-sub" style="flex:none;color:var(--text)">${fmtBs(monthly.agg.fuelBs)}</span></div>
+    </div>
+  `);
+
+  if(monthly.chartData.length){
+    html += Section("Tasa BCV vs valor real del pasaje", `<span class="sec-badge">~</span>`, renderChart(monthly.chartData));
+  }
+
+  html += `<div class="export-row">
+    <button class="export-btn" onclick="exportExcel('${SELECTED_MONTH}')">⬇ Exportar ${SELECTED_MONTH} a Excel</button>
+    <button class="export-btn secondary" onclick="exportExcel(null)">⬇ Exportar todo el historial</button>
+  </div>`;
+
+  html += Section("Sincronizacion", "☁", `
+    <div class="fare-info" style="margin-top:0">Sube o baja tus datos con tu Hoja de Google cuando tengas conexion. No sincroniza sola: solo cuando tocas el boton.</div>
+    <div class="inline-form" style="margin-top:8px">
+      <button class="export-btn flex1" style="padding:10px" onclick="syncUpload()">⬆ Subir</button>
+      <button class="export-btn secondary flex1" style="padding:10px" onclick="syncDownload()">⬇ Bajar</button>
+    </div>
+    ${SYNC_STATUS!=="idle" ? `<div class="fare-info ${SYNC_STATUS==="error"?"neg":""}" style="${SYNC_STATUS==='error'?'color:var(--red)':''}">${esc(SYNC_MSG)}</div>` : ""}
+    ${!CONFIG.syncUrl ? `<div class="fare-warning" style="margin-top:8px">⚠ Aun no configuras el enlace de sincronizacion. Ve a Ajustes ⚙</div>` : ""}
+  `);
+
+  html += `</div>`;
+  return html;
+}
+function shiftMonthKey(mk, delta){ const [y,m]=mk.split("-").map(Number); const d=new Date(y,m-1+delta,1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`; }
+
+function renderChart(data){
+  const w=320,h=180,padL=34,padR=10,padT=10,padB=20;
+  const tasas=data.map(d=>d.tasa).filter(v=>v!=null);
+  const pasajes=data.map(d=>d.pasajeUsd).filter(v=>v!=null);
+  if(!tasas.length && !pasajes.length) return `<div class="empty-note">Sin datos suficientes.</div>`;
+  const tMin=Math.min(...tasas), tMax=Math.max(...tasas);
+  const pMin=Math.min(...pasajes), pMax=Math.max(...pasajes);
+  const n=data.length;
+  const x=i=> padL + (n<=1?0:(i/(n-1))*(w-padL-padR));
+  const yT=v=> padT + (tMax===tMin?((h-padT-padB)/2):(1-(v-tMin)/(tMax-tMin))*(h-padT-padB));
+  const yP=v=> padT + (pMax===pMin?((h-padT-padB)/2):(1-(v-pMin)/(pMax-pMin))*(h-padT-padB));
+  let pathT="", pathP="";
+  data.forEach((d,i)=>{
+    if(d.tasa!=null) pathT += (pathT?"L":"M")+x(i)+","+yT(d.tasa)+" ";
+    if(d.pasajeUsd!=null) pathP += (pathP?"L":"M")+x(i)+","+yP(d.pasajeUsd)+" ";
+  });
+  return `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:180px">
+    <line x1="${padL}" y1="${padT}" x2="${padL}" y2="${h-padB}" stroke="#30333a"/>
+    <line x1="${padL}" y1="${h-padB}" x2="${w-padR}" y2="${h-padB}" stroke="#30333a"/>
+    <path d="${pathT}" fill="none" stroke="#f4b400" stroke-width="2"/>
+    <path d="${pathP}" fill="none" stroke="#34a373" stroke-width="2"/>
+    <text x="${padL}" y="10" fill="#f4b400" font-size="9">Tasa BCV</text>
+    <text x="${w-70}" y="10" fill="#34a373" font-size="9">Pasaje real $</text>
+  </svg>`;
+}
+
+function renderSettings(){
+  if(!SHOW_SETTINGS) return "";
+  return `<div class="modal-overlay" onclick="SHOW_SETTINGS=false;render();">
+    <div class="modal" onclick="event.stopPropagation()">
+      <div class="modal-head"><span>Ajustes</span><button class="icon-btn" onclick="SHOW_SETTINGS=false;render();">✕</button></div>
+      <label class="field-label">Combustible dolarizado ($/litro)</label>
+      <input type="number" inputmode="decimal" class="input" value="${CONFIG.fuelDolarizadaUsdPorLitro}" onchange="saveConfig(Object.assign({},CONFIG,{fuelDolarizadaUsdPorLitro:Number(this.value)||0}))"/>
+      <label class="field-label">Colaboracion subsidiada por llenado ($)</label>
+      <input type="number" inputmode="decimal" class="input" value="${CONFIG.fuelSubsidizadaColaboracionUsd}" onchange="saveConfig(Object.assign({},CONFIG,{fuelSubsidizadaColaboracionUsd:Number(this.value)||0}))"/>
+      <label class="field-label">Litros que gasta en una vuelta corta completa (8.1 km medidos)</label>
+      <input type="number" inputmode="decimal" class="input" value="${CONFIG.litrosVueltaCorta}" onchange="saveConfig(Object.assign({},CONFIG,{litrosVueltaCorta:Number(this.value)||0}))"/>
+      <label class="field-label">Meta de pasaje en dolares (sugerencia mensual)</label>
+      <input type="number" inputmode="decimal" class="input" value="${CONFIG.metaPasajeUsd}" onchange="saveConfig(Object.assign({},CONFIG,{metaPasajeUsd:Number(this.value)||0}))"/>
+      <label class="field-label">Pasaje del mes actual (${monthKeyOf(RECORD.date)}, Bs)</label>
+      <input type="number" inputmode="decimal" class="input" value="${CONFIG.fareByMonth[monthKeyOf(RECORD.date)]||""}" onchange="setFareForMonth('${monthKeyOf(RECORD.date)}',this.value)"/>
+      <label class="field-label">Enlace de sincronizacion (URL del Apps Script de tu Hoja de Google)</label>
+      <input type="text" placeholder="https://script.google.com/macros/s/AKfycb.../exec" class="input" value="${esc(CONFIG.syncUrl)}" onchange="saveConfig(Object.assign({},CONFIG,{syncUrl:this.value.trim()}))"/>
+      <div class="modal-note">Sigue la guia de instalacion para crear este enlace paso a paso; se pega aqui una sola vez.</div>
+    </div>
+  </div>`;
+}
+
+function render(){
+  let html = `<div class="app-shell">`;
+  html += renderHeader();
+  if(ACTIVE_TAB==="hoy") html += renderHoy();
+  else if(ACTIVE_TAB==="historial") html += renderHistorial();
+  else html += renderMensual();
+  html += `</div>`;
+  html += renderSettings();
+  document.getElementById("app").innerHTML = html;
+}
+
+/* ===================== Inicio ===================== */
+render();
+loadBcvHistorico(false).then(maybeAutoFillBcv);
+if("serviceWorker" in navigator){
+  window.addEventListener("load", ()=>{ navigator.serviceWorker.register("service-worker.js").catch(()=>{}); });
+}
+</script>
+</body>
+</html>
