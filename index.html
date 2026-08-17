@@ -107,8 +107,8 @@ body{margin:0;background:#0f1013;}
 .export-row{display:flex;flex-direction:column;gap:8px;}
 .export-btn{display:flex;align-items:center;justify-content:center;gap:8px;background:var(--yellow);color:#1a1a1a;border:none;border-radius:10px;padding:12px;font-weight:700;font-size:13px;cursor:pointer;}
 .export-btn.secondary{background:var(--bg-sub);color:var(--text);border:1px solid var(--border);}
-.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:flex-end;justify-content:center;z-index:50;}
-.modal{background:var(--bg-card);border:1px solid var(--border);border-radius:16px 16px 0 0;padding:18px;width:100%;max-width:480px;max-height:80vh;overflow-y:auto;}
+.modal-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);display:flex;align-items:flex-end;justify-content:center;z-index:9999;-webkit-overflow-scrolling:touch;}
+.modal{background:var(--bg-card);border:1px solid var(--border);border-radius:16px 16px 0 0;padding:18px;padding-bottom:calc(18px + env(safe-area-inset-bottom));width:100%;max-width:480px;max-height:80vh;overflow-y:auto;position:relative;z-index:1;}
 .modal-head{display:flex;justify-content:space-between;align-items:center;font-weight:700;font-size:16px;margin-bottom:10px;}
 .modal-note{font-size:11px;color:var(--text-muted);margin-top:12px;line-height:1.5;}
 select.input{-webkit-appearance:none;}
@@ -129,7 +129,7 @@ const DEFAULT_CONFIG = {
   fuelSubsidizadaColaboracionUsd: 2,
   metaPasajeUsd: 0.5,
   litrosVueltaCorta: 0.85,
-  fareByMonth: {},
+  fareByMonth: { "2026-08": 370 },
   syncUrl: "",
 };
 
@@ -327,7 +327,7 @@ function addQuickVueltas(){
 }
 function setQuick(catId,val){ QUICK[catId]=val; }
 function openDraft(catId){
-  DRAFT={categoria:catId,tipo:"completa",direccion:"ida",pasajerosIda:0,pasajerosVuelta:0,pasajeros:0,ajuste:0,cantidad:1};
+  DRAFT={categoria:catId,tipo:"completa",direccion:"ida",pasajerosIda:0,pasajerosVuelta:0,pasajeros:0,ajuste:0};
   render();
 }
 function cancelDraft(){ DRAFT=null; render(); }
@@ -336,7 +336,7 @@ function fareThisMonth(){ return CONFIG.fareByMonth[monthKeyOf(RECORD.date)]; }
 function draftEsperado(d){ const f=fareThisMonth(); return f?draftPax(d)*f:0; }
 function bumpDraft(field,delta){
   if(!DRAFT) return;
-  const min = field==="cantidad"?1:0;
+  const min = 0;
   DRAFT[field]=Math.max(min,(Number(DRAFT[field])||0)+delta);
   render();
 }
@@ -345,16 +345,16 @@ function setDraftDireccion(dir){ if(DRAFT){ DRAFT.direccion=dir; render(); } }
 function setDraftAjuste(val){ if(DRAFT){ DRAFT.ajuste=val; } }
 function commitDraft(){
   if(!DRAFT) return;
-  const esperado=draftEsperado(DRAFT), ajuste=Number(DRAFT.ajuste)||0, cantidad=Math.max(1,Number(DRAFT.cantidad)||1);
-  const nuevas=Array.from({length:cantidad},()=>({
+  const esperado=draftEsperado(DRAFT), ajuste=Number(DRAFT.ajuste)||0;
+  const nueva={
     id:uid(), categoria:DRAFT.categoria, tipo:DRAFT.tipo,
     direccion: DRAFT.tipo==="media"?DRAFT.direccion:undefined,
     pasajerosIda: DRAFT.tipo==="completa"?Number(DRAFT.pasajerosIda)||0:undefined,
     pasajerosVuelta: DRAFT.tipo==="completa"?Number(DRAFT.pasajerosVuelta)||0:undefined,
     pasajeros: DRAFT.tipo==="media"?Number(DRAFT.pasajeros)||0:undefined,
     ajuste, monto:esperado+ajuste, ts:Date.now(),
-  }));
-  RECORD.vueltas=RECORD.vueltas.concat(nuevas);
+  };
+  RECORD.vueltas=RECORD.vueltas.concat([nueva]);
   DRAFT=null; persistRecord(); render();
 }
 function removeVuelta(id){ RECORD.vueltas=RECORD.vueltas.filter(v=>v.id!==id); persistRecord(); render(); }
@@ -606,7 +606,7 @@ function renderHoy(){
   html += `<div class="summary-card">
     <div class="summary-row"><span>Ingreso estimado (pasaje oficial)</span><span>${fmtBs(daily.ingresoEstimado)}</span></div>
     <div class="summary-row"><span>Ingreso real registrado</span><span>${fmtBs(daily.ingresoReal)}</span></div>
-    ${Math.abs(daily.diferenciaCobro)>0.5 ? `<div class="summary-row"><span>Diferencia por pagos parciales</span><span class="neg">-${fmtBs(daily.diferenciaCobro)}</span></div>` : ""}
+    ${Math.abs(daily.diferenciaCobro)>0.5 ? `<div class="summary-row"><span>Diferencia por pagos parciales</span><span class="${daily.diferenciaCobro>0?"neg":"pos"}">${daily.diferenciaCobro>0?"-":"+"}${fmtBs(Math.abs(daily.diferenciaCobro))}</span></div>` : ""}
     <div class="summary-row"><span>Total gastos</span><span class="neg">${fmtBs(daily.totalGastos)}</span></div>
     <div class="summary-row"><span>Total recibido (efectivo + pago movil)</span><span>${fmtBs(daily.totalRecibido)}</span></div>
     ${Math.abs(daily.diferenciaCaja)>0.5 ? `<div class="summary-row"><span>Diferencia de caja vs. lo registrado</span><span class="${daily.diferenciaCaja<0?"neg":"pos"}">${fmtBs(daily.diferenciaCaja)}</span></div><div class="date-hint" style="margin-top:-4px;margin-bottom:4px;">Una diferencia pequena es normal si algun pasajero pago mixto (parte efectivo, parte pago movil).</div>` : ""}
@@ -635,14 +635,12 @@ function renderDraft(){
       <div class="pax-col"><span class="field-label">Pax ida</span><div class="stepper"><button onclick="bumpDraft('pasajerosIda',-1)">-</button><span>${d.pasajerosIda}</span><button onclick="bumpDraft('pasajerosIda',1)">+</button></div></div>
       <div class="pax-col"><span class="field-label">Pax vuelta</span><div class="stepper"><button onclick="bumpDraft('pasajerosVuelta',-1)">-</button><span>${d.pasajerosVuelta}</span><button onclick="bumpDraft('pasajerosVuelta',1)">+</button></div></div>
     </div>` : `<div class="pax-col" style="margin-top:8px"><span class="field-label">Pasajeros de ese tramo</span><div class="stepper"><button onclick="bumpDraft('pasajeros',-1)">-</button><span>${d.pasajeros}</span><button onclick="bumpDraft('pasajeros',1)">+</button></div></div>`}
-    <label class="field-label">Cantidad de vueltas iguales a agregar</label>
-    <div class="stepper"><button onclick="bumpDraft('cantidad',-1)">-</button><span>${d.cantidad}</span><button onclick="bumpDraft('cantidad',1)">+</button></div>
     <label class="field-label">Faltante o diferencia (Bs) &middot; deja 0 si pago completo, escribe -20 si faltaron 20 Bs</label>
     <input type="number" inputmode="decimal" class="input" value="${esc(d.ajuste)}" onchange="setDraftAjuste(this.value);render();"/>
-    <div class="fare-info">Esperado por vuelta: ${fmtBs(esperado)} &middot; Recibido por vuelta: ${fmtBs(recibido)}${d.cantidad>1?` &middot; x${d.cantidad} = ${fmtBs(recibido*d.cantidad)}`:""}</div>
+    <div class="fare-info">Esperado: ${fmtBs(esperado)} &middot; Recibido: ${fmtBs(recibido)}</div>
     ${!fareThisMonth() ? `<div class="fare-warning" style="margin-top:8px">⚠ Configura el pasaje del mes para calcular el esperado.</div>` : ""}
     ${draftPax(d)<=0 ? `<div class="date-hint" style="margin-top:4px">Sin pasajeros registrados en esta vuelta — util si no recuerdas la cantidad exacta, pero no sumara al ingreso estimado.</div>` : ""}
-    <button class="add-btn full" onclick="commitDraft()">+ Agregar ${d.cantidad>1?d.cantidad+" vueltas":"vuelta"}</button>
+    <button class="add-btn full" onclick="commitDraft()">+ Agregar vuelta</button>
   </div>`;
 }
 
@@ -698,7 +696,7 @@ function renderMensual(){
     <div class="stat-card"><div class="stat-label">Pasajeros</div><div class="stat-value">${monthly.agg.totalPasajeros}</div></div>
     <div class="stat-card"><div class="stat-label">Ingreso estimado</div><div class="stat-value small">${fmtBs(monthly.agg.ingresoEstimado)}</div></div>
     <div class="stat-card"><div class="stat-label">Ingreso real registrado</div><div class="stat-value small">${fmtBs(monthly.agg.ingresoReal)}</div></div>
-    <div class="stat-card"><div class="stat-label">Diferencia por pagos parciales</div><div class="stat-value small neg">${fmtBs(monthly.agg.diferenciaCobro)}</div></div>
+    <div class="stat-card"><div class="stat-label">Diferencia por pagos parciales</div><div class="stat-value small ${monthly.agg.diferenciaCobro>0?"neg":"pos"}">${monthly.agg.diferenciaCobro>0?"-":"+"}${fmtBs(Math.abs(monthly.agg.diferenciaCobro))}</div></div>
     <div class="stat-card"><div class="stat-label">Total recibido</div><div class="stat-value small">${fmtBs(monthly.agg.totalRecibido)}</div></div>
     <div class="stat-card"><div class="stat-label">Gasto combustible</div><div class="stat-value small">${fmtBs(monthly.agg.fuelBs)}</div></div>
     <div class="stat-card"><div class="stat-label">Otros gastos</div><div class="stat-value small">${fmtBs(monthly.agg.gastoOtros)}</div></div>
@@ -809,6 +807,7 @@ function render(){
 
 /* ===================== Inicio ===================== */
 render();
+if(!CONFIG.fareByMonth[monthKeyOf(RECORD.date)]){ SHOW_SETTINGS=true; render(); }
 loadBcvHistorico(false).then(maybeAutoFillBcv);
 if("serviceWorker" in navigator){
   window.addEventListener("load", ()=>{ navigator.serviceWorker.register("service-worker.js").catch(()=>{}); });
