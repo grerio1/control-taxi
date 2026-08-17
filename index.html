@@ -12,11 +12,13 @@
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;700&display=swap');
 *{box-sizing:border-box;}
-body{margin:0;background:#0f1013;}
-.app-shell{
+:root{
   --bg:#16181c; --bg-card:#1e2126; --bg-sub:#252831; --border:#30333a;
   --yellow:#f4b400; --yellow-dim:#caa233; --green:#34a373; --red:#e2574c;
   --text:#f5f3ee; --text-muted:#9a9a9a;
+}
+body{margin:0;background:#0f1013;}
+.app-shell{
   background:var(--bg); color:var(--text); font-family:'Inter',sans-serif;
   padding:16px; max-width:480px; margin:0 auto; min-height:100vh; padding-bottom:60px;
 }
