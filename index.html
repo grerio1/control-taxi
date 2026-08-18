@@ -45,8 +45,8 @@ body{margin:0;background:#0f1013;}
 .card{background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:14px;}
 .card-title{display:flex;align-items:center;gap:8px;font-weight:600;font-size:14px;margin-bottom:10px;}
 .sec-badge{background:var(--bg-sub);border:1px solid var(--border);border-radius:6px;width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--yellow);}
-.field-label{display:block;font-size:12px;color:var(--text-muted);margin-bottom:5px;margin-top:8px;}
-.input{width:100%;background:var(--bg-sub);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:9px 10px;font-size:14px;box-sizing:border-box;}
+.field-label{display:block;font-size:13px;color:var(--text-muted);margin-bottom:5px;margin-top:8px;}
+.input{width:100%;background:var(--bg-sub);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:10px 10px;font-size:16px;box-sizing:border-box;}
 .inline-form{display:flex;gap:8px;align-items:flex-end;}
 .inline-form.wrap{flex-wrap:wrap;}
 .flex1{flex:1;}
@@ -70,8 +70,9 @@ body{margin:0;background:#0f1013;}
 .draft-head{display:flex;justify-content:space-between;align-items:center;font-weight:700;font-size:13px;margin-bottom:8px;}
 .pax-row{display:flex;gap:10px;margin-top:8px;}
 .pax-col{flex:1;display:flex;flex-direction:column;gap:4px;}
-.stepper{display:flex;align-items:center;gap:6px;background:var(--bg);border-radius:6px;padding:2px 6px;width:fit-content;}
-.stepper button{background:none;border:none;color:var(--yellow);font-weight:700;font-size:16px;width:22px;height:26px;cursor:pointer;}
+.stepper{display:flex;align-items:center;gap:10px;background:var(--bg);border-radius:10px;padding:6px 10px;width:fit-content;}
+.stepper button{background:var(--bg-sub);border:1px solid var(--yellow-dim);color:var(--yellow);font-weight:700;font-size:26px;width:46px;height:46px;border-radius:8px;cursor:pointer;line-height:1;}
+.stepper span{font-size:22px;font-weight:700;min-width:32px;text-align:center;display:inline-block;}
 .del-btn{background:none;border:none;color:var(--red);display:flex;cursor:pointer;}
 .add-btn{background:var(--yellow);border:none;color:#1a1a1a;border-radius:8px;width:38px;height:38px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:16px;}
 .add-btn.full{width:100%;display:flex;align-items:center;justify-content:center;gap:6px;border-radius:8px;margin-top:10px;font-size:13px;font-weight:700;height:38px;}
@@ -113,7 +114,7 @@ body{margin:0;background:#0f1013;}
 .modal{background:var(--bg-card);border:1px solid var(--border);border-radius:16px 16px 0 0;padding:18px;padding-bottom:calc(18px + env(safe-area-inset-bottom));width:100%;max-width:480px;max-height:80vh;overflow-y:auto;position:relative;z-index:1;}
 .modal-head{display:flex;justify-content:space-between;align-items:center;font-weight:700;font-size:16px;margin-bottom:10px;}
 .modal-note{font-size:11px;color:var(--text-muted);margin-top:12px;line-height:1.5;}
-select.input{-webkit-appearance:none;}
+select.input{-webkit-appearance:none;appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--yellow) 50%),linear-gradient(135deg,var(--yellow) 50%,transparent 50%);background-position:calc(100% - 20px) calc(1em + 2px),calc(100% - 15px) calc(1em + 2px);background-size:5px 5px,5px 5px;background-repeat:no-repeat;padding-right:32px;}
 </style>
 </head>
 <body>
@@ -143,7 +144,7 @@ function fmtBs(n){ const v=Number(n)||0; return v.toLocaleString("es-VE",{minimu
 function fmtUsd(n){ if(n===null||n===undefined||isNaN(n)) return "--"; return "$"+Number(n).toFixed(3); }
 function esc(s){ return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
 function blankRecord(date){
-  return { date, bcvRate:"", vueltas:[], personales:[], fuel:{tipo:"",litros:""}, gastos:[], cierre:{efectivo:"",pagoMovil:""} };
+  return { date, bcvRate:"", vueltas:[], personales:[], fuel:{tipo:"",litros:""}, comprasCombustible:[], gastos:[], cierre:{efectivo:"",pagoMovil:""} };
 }
 function normalizeApiDate(raw){
   if(!raw || typeof raw!=="string") return null;
@@ -192,6 +193,7 @@ function computeDaily(rec, config){
   const gastoOtros = rec.gastos.reduce((s,g)=>s+(Number(g.monto)||0),0);
   const gastosPorTipo={}; GASTO_TIPOS.forEach(t=>gastosPorTipo[t]=0);
   rec.gastos.forEach(g=>{ gastosPorTipo[g.tipo]=(gastosPorTipo[g.tipo]||0)+(Number(g.monto)||0); });
+  const comprasCombustibleBs = (rec.comprasCombustible||[]).reduce((s,c)=>s+(Number(c.costoBs)||0),0);
   const totalGastos = fuelBs+gastoOtros;
   const ingresoEstimado = ingresoEstimadoVueltas+ingresoPersonal;
   const ingresoReal = ingresoRealVueltas+ingresoPersonal;
@@ -202,13 +204,13 @@ function computeDaily(rec, config){
   const balance = totalRecibido-totalGastos;
   const pasajeUsd = bcv ? fare/bcv : null;
   return {fare,totalPasajeros,porCategoria,totalVueltas:rec.vueltas.length,totalCompletas,totalMedias,
-    kmVueltas,kmPersonales,kmTotal:kmVueltas+kmPersonales,ingresoPersonal,fuelUsd,fuelBs,gastoOtros,gastosPorTipo,
+    kmVueltas,kmPersonales,kmTotal:kmVueltas+kmPersonales,ingresoPersonal,fuelUsd,fuelBs,comprasCombustibleBs,gastoOtros,gastosPorTipo,
     totalGastos,ingresoEstimado,ingresoReal,diferenciaCobro,diferenciaCaja,efectivo,pagoMovil,totalRecibido,balance,pasajeUsd,bcv};
 }
 function computeMonthly(monthKey, allDays, config){
   const recs = Object.values(allDays).filter(r=>monthKeyOf(r.date)===monthKey).sort((a,b)=>a.date.localeCompare(b.date));
   const agg = {totalVueltas:0,totalCompletas:0,totalMedias:0,porCategoria:{corta:0,mediana:0,larga:0},totalPasajeros:0,
-    kmVueltas:0,kmPersonales:0,ingresoPersonal:0,fuelBs:0,gastoOtros:0,gastosPorTipo:Object.fromEntries(GASTO_TIPOS.map(t=>[t,0])),
+    kmVueltas:0,kmPersonales:0,ingresoPersonal:0,fuelBs:0,comprasCombustibleBs:0,gastoOtros:0,gastosPorTipo:Object.fromEntries(GASTO_TIPOS.map(t=>[t,0])),
     totalGastos:0,ingresoEstimado:0,ingresoReal:0,diferenciaCobro:0,diferenciaCaja:0,efectivo:0,pagoMovil:0,totalRecibido:0,
     balance:0,bcvSum:0,bcvCount:0};
   const chartData=[];
@@ -217,7 +219,7 @@ function computeMonthly(monthKey, allDays, config){
     agg.totalVueltas+=d.totalVueltas; agg.totalCompletas+=d.totalCompletas; agg.totalMedias+=d.totalMedias;
     CATS.forEach(c=>agg.porCategoria[c.id]+=d.porCategoria[c.id]||0);
     agg.totalPasajeros+=d.totalPasajeros; agg.kmVueltas+=d.kmVueltas; agg.kmPersonales+=d.kmPersonales;
-    agg.ingresoPersonal+=d.ingresoPersonal; agg.fuelBs+=d.fuelBs; agg.gastoOtros+=d.gastoOtros;
+    agg.ingresoPersonal+=d.ingresoPersonal; agg.fuelBs+=d.fuelBs; agg.comprasCombustibleBs+=d.comprasCombustibleBs; agg.gastoOtros+=d.gastoOtros;
     GASTO_TIPOS.forEach(t=>agg.gastosPorTipo[t]+=d.gastosPorTipo[t]||0);
     agg.totalGastos+=d.totalGastos; agg.ingresoEstimado+=d.ingresoEstimado; agg.ingresoReal+=d.ingresoReal;
     agg.diferenciaCobro+=d.diferenciaCobro; agg.diferenciaCaja+=d.diferenciaCaja;
@@ -380,6 +382,20 @@ function setFuelTipo(tipo){
 function setFuelLitros(val){ RECORD.fuel.litros=val; persistRecord(); render(); }
 function recalcLitros(){ RECORD.fuel.litros=estimatedLitros().toFixed(1); persistRecord(); render(); }
 
+let COMPRA_TIPO="", COMPRA_LITROS="", COMPRA_NOTA="";
+function setCompraTipo(t){ COMPRA_TIPO=t; render(); }
+function addCompraCombustible(){
+  if(!COMPRA_TIPO || !COMPRA_LITROS) return;
+  const litros=Number(COMPRA_LITROS)||0;
+  const costoUsd = COMPRA_TIPO==="dolarizada" ? litros*CONFIG.fuelDolarizadaUsdPorLitro : CONFIG.fuelSubsidizadaColaboracionUsd;
+  const bcv=Number(RECORD.bcvRate)||0;
+  const costoBs = bcv ? costoUsd*bcv : 0;
+  if(!RECORD.comprasCombustible) RECORD.comprasCombustible=[];
+  RECORD.comprasCombustible.push({id:uid(), tipo:COMPRA_TIPO, litros, costoUsd, costoBs, nota:COMPRA_NOTA});
+  COMPRA_TIPO=""; COMPRA_LITROS=""; COMPRA_NOTA=""; persistRecord(); render();
+}
+function removeCompraCombustible(id){ RECORD.comprasCombustible=(RECORD.comprasCombustible||[]).filter(c=>c.id!==id); persistRecord(); render(); }
+
 /* ===================== Otros gastos ===================== */
 function addGasto(){
   if(!GASTO_MONTO) return;
@@ -402,7 +418,7 @@ function exportExcel(scopeMonth){
       "Vueltas cortas":d.porCategoria.corta,"Vueltas medianas":d.porCategoria.mediana,"Vueltas largas":d.porCategoria.larga,
       "Vueltas completas":d.totalCompletas,"Medias vueltas":d.totalMedias,"Total pasajeros":d.totalPasajeros,
       "Km recorrido (vueltas)":Number(d.kmVueltas.toFixed(1)),"Km personales":Number(d.kmPersonales.toFixed(1)),
-      "Ingreso carreras personales (Bs)":d.ingresoPersonal,"Gasto combustible (Bs)":Number(d.fuelBs.toFixed(2)),
+      "Ingreso carreras personales (Bs)":d.ingresoPersonal,"Gasto combustible estimado (Bs)":Number(d.fuelBs.toFixed(2)),"Combustible comprado real (Bs)":Number(d.comprasCombustibleBs.toFixed(2)),
       "Gasto otros (Bs)":Number(d.gastoOtros.toFixed(2)),"Total gastos (Bs)":Number(d.totalGastos.toFixed(2)),
       "Ingreso estimado - pasaje oficial (Bs)":Number(d.ingresoEstimado.toFixed(2)),"Ingreso real registrado (Bs)":Number(d.ingresoReal.toFixed(2)),
       "Diferencia por pagos parciales (Bs)":Number(d.diferenciaCobro.toFixed(2)),"Efectivo (Bs)":d.efectivo,"Pago movil (Bs)":d.pagoMovil,
@@ -431,7 +447,7 @@ function exportExcel(scopeMonth){
     const {agg}=computeMonthly(mk,ALLDAYS,CONFIG);
     const row={Mes:mk,"Total vueltas":agg.totalVueltas,"Vueltas completas":agg.totalCompletas,"Medias vueltas":agg.totalMedias,
       Cortas:agg.porCategoria.corta,Medianas:agg.porCategoria.mediana,Largas:agg.porCategoria.larga,"Total pasajeros":agg.totalPasajeros,
-      "Km total aprox":Number((agg.kmVueltas+agg.kmPersonales).toFixed(1)),"Gasto combustible (Bs)":Number(agg.fuelBs.toFixed(2))};
+      "Km total aprox":Number((agg.kmVueltas+agg.kmPersonales).toFixed(1)),"Gasto combustible estimado (Bs)":Number(agg.fuelBs.toFixed(2)),"Combustible comprado real (Bs)":Number(agg.comprasCombustibleBs.toFixed(2))};
     GASTO_TIPOS.forEach(t=>{ row[`Gasto - ${t} (Bs)`]=Number((agg.gastosPorTipo[t]||0).toFixed(2)); });
     Object.assign(row,{"Total otros gastos (Bs)":Number(agg.gastoOtros.toFixed(2)),"Total gastos (Bs)":Number(agg.totalGastos.toFixed(2)),
       "Ingreso estimado (Bs)":Number(agg.ingresoEstimado.toFixed(2)),"Ingreso real (Bs)":Number(agg.ingresoReal.toFixed(2)),
@@ -583,8 +599,24 @@ function renderHoy(){
         <button class="icon-btn" title="Recalcular con el km de hoy" onclick="recalcLitros()">↻</button>
       </div>
       <div class="fare-info">Estimado: ${daily.kmTotal.toFixed(1)} km &times; ${litrosPorKm().toFixed(4)} L/km = ${estLitros.toFixed(2)} L &middot; basado en ${CONFIG.litrosVueltaCorta} L medidos en una vuelta corta (8.1 km)</div>
-      <div class="fare-info">Costo: ${fmtUsd(daily.fuelUsd)} ${RECORD.bcvRate?` &middot; ${fmtBs(daily.fuelBs)}`:"(falta tasa BCV)"}</div>
+      <div class="fare-info">Costo estimado (se resta del balance del dia): ${fmtUsd(daily.fuelUsd)} ${RECORD.bcvRate?` &middot; ${fmtBs(daily.fuelBs)}`:"(falta tasa BCV)"}</div>
     ` : ""}
+    <div class="quick-load" style="margin-top:14px">
+      <div class="field-label" style="margin-top:0">Compra real de combustible (opcional) &middot; para comparar con el estimado. No se resta del balance del dia — util si echas cada 2 o 3 dias.</div>
+      <div class="radio-row">
+        <button class="radio-pill ${COMPRA_TIPO==="dolarizada"?"active":""}" onclick="setCompraTipo('dolarizada')">Dolarizada</button>
+        <button class="radio-pill ${COMPRA_TIPO==="subsidizada"?"active":""}" onclick="setCompraTipo('subsidizada')">Subsidiada</button>
+      </div>
+      ${COMPRA_TIPO ? `
+        <label class="field-label">Litros que echaste realmente</label>
+        <input type="number" min="0" inputmode="decimal" placeholder="Litros" value="${esc(COMPRA_LITROS)}" oninput="COMPRA_LITROS=this.value" class="input"/>
+        <label class="field-label">Nota (opcional, ej: cubrio ayer y hoy)</label>
+        <input type="text" placeholder="Ej: cubrio ayer y hoy" value="${esc(COMPRA_NOTA)}" oninput="COMPRA_NOTA=this.value" class="input"/>
+        <button class="add-btn full" onclick="addCompraCombustible()">+ Registrar compra</button>
+      ` : ""}
+      ${(RECORD.comprasCombustible||[]).length ? `<div class="list">${RECORD.comprasCombustible.map(c=>`<div class="list-row"><span class="list-tag">${c.tipo==="dolarizada"?"Dolarizada":"Subsidiada"}</span><span class="list-sub">${c.litros} L &middot; ${fmtBs(c.costoBs)}${c.nota?" · "+esc(c.nota):""}</span><button class="del-btn" onclick="removeCompraCombustible('${c.id}')">🗑</button></div>`).join("")}</div>` : ""}
+      ${daily.comprasCombustibleBs>0 ? `<div class="fare-info">Total comprado realmente hoy: ${fmtBs(daily.comprasCombustibleBs)}</div>` : ""}
+    </div>
   `);
 
   html += Section("Otros gastos (Bs)", `<span class="sec-badge">Bs</span>`, `
@@ -700,7 +732,9 @@ function renderMensual(){
     <div class="stat-card"><div class="stat-label">Ingreso real registrado</div><div class="stat-value small">${fmtBs(monthly.agg.ingresoReal)}</div></div>
     <div class="stat-card"><div class="stat-label">Diferencia por pagos parciales</div><div class="stat-value small ${monthly.agg.diferenciaCobro>0?"neg":"pos"}">${monthly.agg.diferenciaCobro>0?"-":"+"}${fmtBs(Math.abs(monthly.agg.diferenciaCobro))}</div></div>
     <div class="stat-card"><div class="stat-label">Total recibido</div><div class="stat-value small">${fmtBs(monthly.agg.totalRecibido)}</div></div>
-    <div class="stat-card"><div class="stat-label">Gasto combustible</div><div class="stat-value small">${fmtBs(monthly.agg.fuelBs)}</div></div>
+    <div class="stat-card"><div class="stat-label">Gasto combustible (estimado)</div><div class="stat-value small">${fmtBs(monthly.agg.fuelBs)}</div></div>
+    <div class="stat-card"><div class="stat-label">Combustible comprado (real)</div><div class="stat-value small">${fmtBs(monthly.agg.comprasCombustibleBs)}</div></div>
+    ${monthly.agg.comprasCombustibleBs>0 ? `<div class="stat-card wide"><div class="stat-label">Diferencia estimado vs. real</div><div class="stat-value small">${fmtBs(monthly.agg.fuelBs-monthly.agg.comprasCombustibleBs)}</div></div>` : ""}
     <div class="stat-card"><div class="stat-label">Otros gastos</div><div class="stat-value small">${fmtBs(monthly.agg.gastoOtros)}</div></div>
     <div class="stat-card wide"><div class="stat-label">Balance del mes</div><div class="stat-value ${monthly.agg.balance<0?"neg":"pos"}">${fmtBs(monthly.agg.balance)}</div></div>
   </div>`;
