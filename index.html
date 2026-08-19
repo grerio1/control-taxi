@@ -108,6 +108,12 @@ body{margin:0;background:#0f1013;}
 .stat-value{font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:700;margin-top:4px;}
 .stat-value.small{font-size:14px;}
 .export-row{display:flex;flex-direction:column;gap:8px;}
+.chip-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;}
+.chip{background:var(--bg-sub);border:1px solid var(--border);border-radius:8px;padding:6px 9px;display:flex;flex-direction:column;align-items:center;min-width:66px;}
+.chip.gasolina{border-color:var(--yellow-dim);background:rgba(244,180,0,.08);}
+.chip-label{font-size:10px;color:var(--text-muted);}
+.chip-val{font-size:12px;font-weight:700;color:var(--text);}
+.summary-divider{height:1px;background:var(--border);margin:10px 0;}
 .export-btn{display:flex;align-items:center;justify-content:center;gap:8px;background:var(--yellow);color:#1a1a1a;border:none;border-radius:10px;padding:12px;font-weight:700;font-size:13px;cursor:pointer;}
 .export-btn.secondary{background:var(--bg-sub);color:var(--text);border:1px solid var(--border);}
 .modal-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);display:flex;align-items:flex-end;justify-content:center;z-index:9999;-webkit-overflow-scrolling:touch;color:var(--text);font-family:'Inter',sans-serif;}
@@ -126,7 +132,13 @@ const CATS = [
   { id: "mediana", label: "Mediana", km: 9.6 },
   { id: "larga", label: "Larga", km: 10 },
 ];
-const GASTO_TIPOS = ["Aceite","Liga de frenos","Reparacion espichadura/cauchera","Lavado","Alimentacion/Hidratacion","Otro"];
+const GASTO_TIPOS = ["Aceite","Liga de frenos","Cauchero/Espichadura","Lavado","Alimentacion","Hidratacion","Otro"];
+const GASTO_LABEL_CORTO = {
+  "Aceite":"Aceite","Liga de frenos":"LigaFreno","Cauchero/Espichadura":"Cauchero",
+  "Lavado":"Lavado","Alimentacion":"Aliment.","Hidratacion":"Hidratac.","Otro":"Otros",
+  "Reparacion espichadura/cauchera":"Cauchero","Alimentacion/Hidratacion":"Aliment/Hidr",
+};
+function fmtTime(ts){ if(!ts) return ""; const d=new Date(ts); return d.toLocaleTimeString("es-VE",{hour:"2-digit",minute:"2-digit"}); }
 const DEFAULT_CONFIG = {
   fuelDolarizadaUsdPorLitro: 0.5,
   fuelSubsidizadaColaboracionUsd: 2,
@@ -203,13 +215,21 @@ function computeDaily(rec, config){
   const diferenciaCaja = totalRecibido-ingresoReal;
   const balance = totalRecibido-totalGastos;
   const pasajeUsd = bcv ? fare/bcv : null;
-  return {fare,totalPasajeros,porCategoria,totalVueltas:rec.vueltas.length,totalCompletas,totalMedias,
+  const vueltasEquivalentes = totalCompletas + totalMedias*0.5;
+  return {fare,totalPasajeros,porCategoria,totalVueltas:rec.vueltas.length,totalCompletas,totalMedias,vueltasEquivalentes,
     kmVueltas,kmPersonales,kmTotal:kmVueltas+kmPersonales,ingresoPersonal,fuelUsd,fuelBs,comprasCombustibleBs,gastoOtros,gastosPorTipo,
     totalGastos,ingresoEstimado,ingresoReal,diferenciaCobro,diferenciaCaja,efectivo,pagoMovil,totalRecibido,balance,pasajeUsd,bcv};
 }
+function diaTieneDatos(r){
+  if(!r) return false;
+  return !!((r.vueltas&&r.vueltas.length) || (r.personales&&r.personales.length) || (r.gastos&&r.gastos.length) ||
+    (r.comprasCombustible&&r.comprasCombustible.length) || (r.fuel&&r.fuel.tipo) ||
+    (r.cierre&&(Number(r.cierre.efectivo)||Number(r.cierre.pagoMovil))));
+}
 function computeMonthly(monthKey, allDays, config){
-  const recs = Object.values(allDays).filter(r=>monthKeyOf(r.date)===monthKey).sort((a,b)=>a.date.localeCompare(b.date));
-  const agg = {totalVueltas:0,totalCompletas:0,totalMedias:0,porCategoria:{corta:0,mediana:0,larga:0},totalPasajeros:0,
+  const recsAll = Object.values(allDays).filter(r=>monthKeyOf(r.date)===monthKey).sort((a,b)=>a.date.localeCompare(b.date));
+  const recs = recsAll.filter(diaTieneDatos);
+  const agg = {totalVueltas:0,totalCompletas:0,totalMedias:0,totalVueltasEquivalentes:0,porCategoria:{corta:0,mediana:0,larga:0},totalPasajeros:0,
     kmVueltas:0,kmPersonales:0,ingresoPersonal:0,fuelBs:0,comprasCombustibleBs:0,gastoOtros:0,gastosPorTipo:Object.fromEntries(GASTO_TIPOS.map(t=>[t,0])),
     totalGastos:0,ingresoEstimado:0,ingresoReal:0,diferenciaCobro:0,diferenciaCaja:0,efectivo:0,pagoMovil:0,totalRecibido:0,
     balance:0,bcvSum:0,bcvCount:0};
@@ -217,6 +237,7 @@ function computeMonthly(monthKey, allDays, config){
   recs.forEach(r=>{
     const d=computeDaily(r,config);
     agg.totalVueltas+=d.totalVueltas; agg.totalCompletas+=d.totalCompletas; agg.totalMedias+=d.totalMedias;
+    agg.totalVueltasEquivalentes+=d.vueltasEquivalentes;
     CATS.forEach(c=>agg.porCategoria[c.id]+=d.porCategoria[c.id]||0);
     agg.totalPasajeros+=d.totalPasajeros; agg.kmVueltas+=d.kmVueltas; agg.kmPersonales+=d.kmPersonales;
     agg.ingresoPersonal+=d.ingresoPersonal; agg.fuelBs+=d.fuelBs; agg.comprasCombustibleBs+=d.comprasCombustibleBs; agg.gastoOtros+=d.gastoOtros;
@@ -225,7 +246,11 @@ function computeMonthly(monthKey, allDays, config){
     agg.diferenciaCobro+=d.diferenciaCobro; agg.diferenciaCaja+=d.diferenciaCaja;
     agg.efectivo+=d.efectivo; agg.pagoMovil+=d.pagoMovil; agg.totalRecibido+=d.totalRecibido; agg.balance+=d.balance;
     if(r.bcvRate){ agg.bcvSum+=Number(r.bcvRate); agg.bcvCount++; }
-    chartData.push({dia:r.date.slice(8,10), tasa:r.bcvRate?Number(r.bcvRate):null, pasajeUsd: d.pasajeUsd?Number(d.pasajeUsd.toFixed(3)):null});
+  });
+  recsAll.forEach(r=>{
+    if(!r.bcvRate) return;
+    const d=computeDaily(r,config);
+    chartData.push({dia:r.date.slice(8,10), tasa:Number(r.bcvRate), pasajeUsd: d.pasajeUsd?Number(d.pasajeUsd.toFixed(3)):null});
   });
   agg.bcvProm = agg.bcvCount ? agg.bcvSum/agg.bcvCount : null;
   const dias = recs.length||1; agg.diasRegistrados=recs.length;
@@ -430,7 +455,7 @@ function exportExcel(scopeMonth){
     const fare=CONFIG.fareByMonth[monthKeyOf(r.date)]||0;
     r.vueltas.forEach(v=>{
       const cat=CATS.find(c=>c.id===v.categoria); const tipo=v.tipo===undefined?"completa":v.tipo;
-      vueltasDetalle.push({Fecha:r.date,Categoria:cat?cat.label:v.categoria,Tipo:tipo==="completa"?"Vuelta completa":"Media vuelta",
+      vueltasDetalle.push({Fecha:r.date,Hora:fmtTime(v.ts),Categoria:cat?cat.label:v.categoria,Tipo:tipo==="completa"?"Vuelta completa":"Media vuelta",
         Direccion: tipo==="media" ? (v.direccion==="vuelta"?"Destino -> Urb.":"Urb. -> destino") : "",
         "Km recorrido":Number(vueltaKm(v).toFixed(1)),"Pax ida":tipo==="completa"?(v.pasajerosIda??""):"",
         "Pax vuelta":tipo==="completa"?(v.pasajerosVuelta??""):"","Pax tramo":tipo==="media"?(v.pasajeros??""):"",
@@ -569,13 +594,14 @@ function renderHoy(){
         const cat=CATS.find(c=>c.id===v.categoria); const tipo=v.tipo===undefined?"completa":v.tipo;
         const pax=vueltaPax(v), km=vueltaKm(v), monto=vueltaMonto(v,fare||0), esperado=pax*(fare||0);
         const under = fare && monto < esperado-0.5;
-        return `<div class="list-row">
+        return `<div class="list-row" title="Agregada a las ${fmtTime(v.ts)}">
           <div class="list-main"><span class="list-tag">${cat.label} &middot; ${tipo==="completa"?"completa":("media, "+(v.direccion==="vuelta"?"vuelta":"ida"))}</span><span class="list-sub">${pax} pax &middot; ${km.toFixed(1)} km</span></div>
           <div class="list-main"><span class="list-tag ${under?"neg":""}">${fmtBs(monto)}</span>${under?`<span class="list-sub neg">de ${fmtBs(esperado)} esperado</span>`:""}</div>
           <button class="del-btn" onclick="removeVuelta('${v.id}')">🗑</button>
         </div>`;
       }).join("")}</div>` : ""}
     <div class="fare-info">${daily.totalCompletas} completas &middot; ${daily.totalMedias} medias &middot; ${daily.totalPasajeros} pasajeros &middot; ${daily.kmVueltas.toFixed(1)} km</div>
+    <div class="fare-info">Equivalente en vueltas completas: <strong>${daily.vueltasEquivalentes.toFixed(1)}</strong> (cada 2 medias vueltas cuentan como 1 completa)</div>
   `);
 
   html += Section("Carreras personales", "👤", `
@@ -626,8 +652,17 @@ function renderHoy(){
     <input type="number" inputmode="decimal" placeholder="0.00" value="${esc(GASTO_MONTO)}" oninput="GASTO_MONTO=this.value" class="input"/>
     <label class="field-label">Nota (opcional)</label>
     <input type="text" placeholder="Ej: cambio de aceite completo" value="${esc(GASTO_NOTA)}" oninput="GASTO_NOTA=this.value" class="input"/>
+
+    <div class="field-label" style="margin-top:14px">Desglose de hoy (todo lo que compone tu "Total gastos")</div>
+    <div class="chip-row">
+      ${GASTO_TIPOS.map(t=>`<div class="chip"><span class="chip-label">${esc(GASTO_LABEL_CORTO[t]||t)}</span><span class="chip-val">${fmtBs(daily.gastosPorTipo[t]||0)}</span></div>`).join("")}
+      <div class="chip gasolina"><span class="chip-label">Gasolina</span><span class="chip-val">${fmtBs(daily.fuelBs)}</span></div>
+    </div>
+    <div class="date-hint">La ficha "Gasolina" es el estimado automatico segun tu km recorrido — no siempre coincide con el dia que pagaste realmente, pero sirve para ver tu efectividad operativa de hoy.</div>
+
     <button class="add-btn full" onclick="addGasto()">+ Agregar gasto</button>
-    ${RECORD.gastos.length ? `<div class="list">${RECORD.gastos.map(g=>`<div class="list-row"><span class="list-tag">${esc(g.tipo)}</span><span class="list-sub">${fmtBs(g.monto)}${g.nota?" · "+esc(g.nota):""}</span><button class="del-btn" onclick="removeGasto('${g.id}')">🗑</button></div>`).join("")}</div>` : ""}
+
+    ${RECORD.gastos.length ? `<div class="field-label" style="margin-top:14px">Gastos cargados hoy (individual)</div><div class="list">${RECORD.gastos.map(g=>`<div class="list-row"><span class="list-tag">${esc(g.tipo)}</span><span class="list-sub">${fmtBs(g.monto)}${g.nota?" · "+esc(g.nota):""}</span><button class="del-btn" onclick="removeGasto('${g.id}')">🗑</button></div>`).join("")}</div>` : `<div class="date-hint" style="margin-top:10px">Aun no has cargado ningun gasto individual hoy.</div>`}
   `);
 
   html += Section("Cierre del dia", "💰", `
@@ -638,14 +673,14 @@ function renderHoy(){
   `);
 
   html += `<div class="summary-card">
-    <div class="summary-row"><span>Ingreso estimado (pasaje oficial)</span><span>${fmtBs(daily.ingresoEstimado)}</span></div>
     <div class="summary-row"><span>Ingreso real registrado</span><span>${fmtBs(daily.ingresoReal)}</span></div>
-    ${Math.abs(daily.diferenciaCobro)>0.5 ? `<div class="summary-row"><span>Diferencia por pagos parciales</span><span class="${daily.diferenciaCobro>0?"neg":"pos"}">${daily.diferenciaCobro>0?"-":"+"}${fmtBs(Math.abs(daily.diferenciaCobro))}</span></div>` : ""}
-    <div class="summary-row"><span>Total gastos</span><span class="neg">${fmtBs(daily.totalGastos)}</span></div>
-    <div class="summary-row"><span>Total recibido (efectivo + pago movil)</span><span>${fmtBs(daily.totalRecibido)}</span></div>
+    ${Math.abs(daily.diferenciaCobro)>0.5 ? `<div class="summary-row"><span>Diferencia por pagos parciales (rebaja)</span><span class="${daily.diferenciaCobro>0?"neg":"pos"}">${daily.diferenciaCobro>0?"-":"+"}${fmtBs(Math.abs(daily.diferenciaCobro))}</span></div>` : ""}
     ${Math.abs(daily.diferenciaCaja)>0.5 ? `<div class="summary-row"><span>Diferencia de caja vs. lo registrado</span><span class="${daily.diferenciaCaja<0?"neg":"pos"}">${fmtBs(daily.diferenciaCaja)}</span></div><div class="date-hint" style="margin-top:-4px;margin-bottom:4px;">Una diferencia pequena es normal si algun pasajero pago mixto (parte efectivo, parte pago movil).</div>` : ""}
-    <div class="summary-row total"><span>Balance del dia</span><span class="${daily.balance<0?"neg":"pos"}">${fmtBs(daily.balance)}</span></div>
-    ${RECORD.bcvRate ? `<div class="balance-usd">≈ ${fmtUsd(daily.balance/Number(RECORD.bcvRate))} segun la tasa de hoy</div>` : `<div class="date-hint">Registra la tasa BCV de hoy para ver el balance en dolares.</div>`}
+    <div class="summary-divider"></div>
+    <div class="summary-row"><span>Total recibido (efectivo + pago movil)</span><span>${fmtBs(daily.totalRecibido)}</span></div>
+    <div class="summary-row"><span>Total gastos</span><span class="neg">${fmtBs(daily.totalGastos)}</span></div>
+    <div class="summary-row total"><span>Balance del dia (Bs)</span><span class="${daily.balance<0?"neg":"pos"}">${fmtBs(daily.balance)}</span></div>
+    ${RECORD.bcvRate ? `<div class="summary-row total"><span>Balance del dia ($)</span><span class="${daily.balance<0?"neg":"pos"}">${fmtUsd(daily.balance/Number(RECORD.bcvRate))}</span></div>` : `<div class="date-hint">Registra la tasa BCV de hoy para ver el balance en dolares.</div>`}
   </div>`;
 
   html += `</div>`;
@@ -719,7 +754,7 @@ function renderMensual(){
 
   html += Section("Dias del mes", "📅", `
     <div class="day-grid">${Array.from({length:dim},(_,i)=>{
-      const dd=String(i+1).padStart(2,"0"); const dateStr=`${SELECTED_MONTH}-${dd}`; const exists=!!ALLDAYS[dateStr];
+      const dd=String(i+1).padStart(2,"0"); const dateStr=`${SELECTED_MONTH}-${dd}`; const exists=diaTieneDatos(ALLDAYS[dateStr]);
       return `<button class="day-chip ${exists?"ok":"missing"}" onclick="goToDate('${dateStr}')" title="${dateStr}">${i+1}</button>`;
     }).join("")}</div>
     <div class="legend-row"><span><span class="legend-dot ok"></span>registrado</span><span><span class="legend-dot missing"></span>falta</span></div>
@@ -727,6 +762,7 @@ function renderMensual(){
 
   html += `<div class="stat-grid">
     <div class="stat-card"><div class="stat-label">Vueltas (completas / medias)</div><div class="stat-value small">${monthly.agg.totalCompletas} / ${monthly.agg.totalMedias}</div></div>
+    <div class="stat-card"><div class="stat-label">Equivalente en completas</div><div class="stat-value small">${monthly.agg.totalVueltasEquivalentes.toFixed(1)}</div></div>
     <div class="stat-card"><div class="stat-label">Pasajeros</div><div class="stat-value">${monthly.agg.totalPasajeros}</div></div>
     <div class="stat-card"><div class="stat-label">Ingreso estimado</div><div class="stat-value small">${fmtBs(monthly.agg.ingresoEstimado)}</div></div>
     <div class="stat-card"><div class="stat-label">Ingreso real registrado</div><div class="stat-value small">${fmtBs(monthly.agg.ingresoReal)}</div></div>
@@ -753,8 +789,8 @@ function renderMensual(){
 
   html += Section("Gastos por categoria (el mes)", `<span class="sec-badge">Bs</span>`, `
     <div class="list">
-      ${GASTO_TIPOS.map(t=>`<div class="list-row"><span class="list-tag" style="flex:1">${esc(t)}</span><span class="list-sub" style="flex:none;color:var(--text)">${fmtBs(monthly.agg.gastosPorTipo[t])}</span></div>`).join("")}
-      <div class="list-row" style="border-color:var(--yellow-dim)"><span class="list-tag" style="flex:1">Combustible</span><span class="list-sub" style="flex:none;color:var(--text)">${fmtBs(monthly.agg.fuelBs)}</span></div>
+      ${GASTO_TIPOS.map(t=>`<div class="list-row"><span class="list-tag" style="flex:1">${esc(GASTO_LABEL_CORTO[t]||t)}</span><span class="list-sub" style="flex:none;color:var(--text)">${fmtBs(monthly.agg.gastosPorTipo[t])}</span></div>`).join("")}
+      <div class="list-row" style="border-color:var(--yellow-dim)"><span class="list-tag" style="flex:1">Gasolina (estimado)</span><span class="list-sub" style="flex:none;color:var(--text)">${fmtBs(monthly.agg.fuelBs)}</span></div>
     </div>
   `);
 
