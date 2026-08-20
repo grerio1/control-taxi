@@ -144,9 +144,27 @@ const DEFAULT_CONFIG = {
   fuelSubsidizadaColaboracionUsd: 2,
   metaPasajeUsd: 0.5,
   litrosVueltaCorta: 0.85,
+  combustibleRespaldoLitrosDia: 1.5,
   fareByMonth: { "2026-08": 370 },
   syncUrl: "",
+  costosTecnicos: [
+    { id:"lavado", label:"Aseo/lavado del vehiculo", usd:5, dias:30 },
+    { id:"liquidos", label:"Liquidos de servicio (frenos/refrig.)", usd:4, dias:30 },
+    { id:"aceite_filtros", label:"Cambio de aceite y filtros", usd:30, dias:21 },
+    { id:"frenos", label:"Sistema de frenos (bandas/pastillas)", usd:25, dias:60 },
+    { id:"filtros", label:"Filtros (aceite/aire/gasolina)", usd:12, dias:45 },
+    { id:"alineacion", label:"Alineacion, balanceo y rotacion", usd:12, dias:30 },
+    { id:"neumaticos", label:"Neumaticos (vida util)", usd:180, dias:240 },
+    { id:"suspension", label:"Tren delantero y suspension", usd:120, dias:180 },
+    { id:"bateria", label:"Bateria 12V", usd:120, dias:450 },
+    { id:"mecanica", label:"Mecanica general e imprevistos", usd:30, dias:30 },
+  ],
 };
+
+function costoTecnicoUsdDia(config){
+  const items = config.costosTecnicos || DEFAULT_CONFIG.costosTecnicos;
+  return items.reduce((s,c)=> s + ((Number(c.usd)||0) / (Number(c.dias)||1)), 0);
+}
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
 function todayStr(){ const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; }
@@ -206,7 +224,9 @@ function computeDaily(rec, config){
   const gastosPorTipo={}; GASTO_TIPOS.forEach(t=>gastosPorTipo[t]=0);
   rec.gastos.forEach(g=>{ gastosPorTipo[g.tipo]=(gastosPorTipo[g.tipo]||0)+(Number(g.monto)||0); });
   const comprasCombustibleBs = (rec.comprasCombustible||[]).reduce((s,c)=>s+(Number(c.costoBs)||0),0);
-  const totalGastos = fuelBs+gastoOtros;
+  const mantenimientoUsd = costoTecnicoUsdDia(config);
+  const mantenimientoBs = bcv ? mantenimientoUsd*bcv : 0;
+  const totalGastos = fuelBs+gastoOtros+mantenimientoBs;
   const ingresoEstimado = ingresoEstimadoVueltas+ingresoPersonal;
   const ingresoReal = ingresoRealVueltas+ingresoPersonal;
   const diferenciaCobro = ingresoEstimado-ingresoReal;
@@ -217,20 +237,20 @@ function computeDaily(rec, config){
   const pasajeUsd = bcv ? fare/bcv : null;
   const vueltasEquivalentes = totalCompletas + totalMedias*0.5;
   return {fare,totalPasajeros,porCategoria,totalVueltas:rec.vueltas.length,totalCompletas,totalMedias,vueltasEquivalentes,
-    kmVueltas,kmPersonales,kmTotal:kmVueltas+kmPersonales,ingresoPersonal,fuelUsd,fuelBs,comprasCombustibleBs,gastoOtros,gastosPorTipo,
+    kmVueltas,kmPersonales,kmTotal:kmVueltas+kmPersonales,ingresoPersonal,fuelUsd,fuelBs,comprasCombustibleBs,mantenimientoUsd,mantenimientoBs,gastoOtros,gastosPorTipo,
     totalGastos,ingresoEstimado,ingresoReal,diferenciaCobro,diferenciaCaja,efectivo,pagoMovil,totalRecibido,balance,pasajeUsd,bcv};
 }
 function diaTieneDatos(r){
   if(!r) return false;
   return !!((r.vueltas&&r.vueltas.length) || (r.personales&&r.personales.length) || (r.gastos&&r.gastos.length) ||
-    (r.comprasCombustible&&r.comprasCombustible.length) || (r.fuel&&r.fuel.tipo) ||
+    (r.comprasCombustible&&r.comprasCombustible.length) || (r.fuel&&r.fuel.tipo&&r.fuel.litros) ||
     (r.cierre&&(Number(r.cierre.efectivo)||Number(r.cierre.pagoMovil))));
 }
 function computeMonthly(monthKey, allDays, config){
   const recsAll = Object.values(allDays).filter(r=>monthKeyOf(r.date)===monthKey).sort((a,b)=>a.date.localeCompare(b.date));
   const recs = recsAll.filter(diaTieneDatos);
   const agg = {totalVueltas:0,totalCompletas:0,totalMedias:0,totalVueltasEquivalentes:0,porCategoria:{corta:0,mediana:0,larga:0},totalPasajeros:0,
-    kmVueltas:0,kmPersonales:0,ingresoPersonal:0,fuelBs:0,comprasCombustibleBs:0,gastoOtros:0,gastosPorTipo:Object.fromEntries(GASTO_TIPOS.map(t=>[t,0])),
+    kmVueltas:0,kmPersonales:0,ingresoPersonal:0,fuelBs:0,comprasCombustibleBs:0,mantenimientoBs:0,gastoOtros:0,gastosPorTipo:Object.fromEntries(GASTO_TIPOS.map(t=>[t,0])),
     totalGastos:0,ingresoEstimado:0,ingresoReal:0,diferenciaCobro:0,diferenciaCaja:0,efectivo:0,pagoMovil:0,totalRecibido:0,
     balance:0,bcvSum:0,bcvCount:0};
   const chartData=[];
@@ -240,7 +260,7 @@ function computeMonthly(monthKey, allDays, config){
     agg.totalVueltasEquivalentes+=d.vueltasEquivalentes;
     CATS.forEach(c=>agg.porCategoria[c.id]+=d.porCategoria[c.id]||0);
     agg.totalPasajeros+=d.totalPasajeros; agg.kmVueltas+=d.kmVueltas; agg.kmPersonales+=d.kmPersonales;
-    agg.ingresoPersonal+=d.ingresoPersonal; agg.fuelBs+=d.fuelBs; agg.comprasCombustibleBs+=d.comprasCombustibleBs; agg.gastoOtros+=d.gastoOtros;
+    agg.ingresoPersonal+=d.ingresoPersonal; agg.fuelBs+=d.fuelBs; agg.comprasCombustibleBs+=d.comprasCombustibleBs; agg.mantenimientoBs+=d.mantenimientoBs; agg.gastoOtros+=d.gastoOtros;
     GASTO_TIPOS.forEach(t=>agg.gastosPorTipo[t]+=d.gastosPorTipo[t]||0);
     agg.totalGastos+=d.totalGastos; agg.ingresoEstimado+=d.ingresoEstimado; agg.ingresoReal+=d.ingresoReal;
     agg.diferenciaCobro+=d.diferenciaCobro; agg.diferenciaCaja+=d.diferenciaCaja;
@@ -291,6 +311,7 @@ let SELECTED_MONTH = monthKeyOf(todayStr());
 let SHOW_SETTINGS=false;
 let SAVED_FLASH=false;
 let SYNC_STATUS="idle", SYNC_MSG="";
+let SHOW_GASTOS_BREAKDOWN=false;
 
 function saveConfig(next){ CONFIG=next; lsSet("taxiconfig", CONFIG); render(); }
 function persistRecord(){
@@ -309,6 +330,13 @@ function shiftDate(delta){
   goToDate(`${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,"0")}-${String(dt.getDate()).padStart(2,"0")}`);
 }
 function setTab(t){ ACTIVE_TAB=t; render(); }
+function vaciarDia(){
+  if(!confirm("Esto borra TODO lo anotado en "+RECORD.date+" (vueltas, gastos, cierre, tasa). No se puede deshacer. Continuar?")) return;
+  try{ localStorage.removeItem("taxiday:"+RECORD.date); }catch(e){}
+  delete ALLDAYS[RECORD.date];
+  RECORD = blankRecord(RECORD.date);
+  render();
+}
 
 /* ===================== Tasa BCV automatica ===================== */
 async function loadBcvHistorico(force){
@@ -398,7 +426,18 @@ function removePersonal(id){ RECORD.personales=RECORD.personales.filter(p=>p.id!
 
 /* ===================== Combustible ===================== */
 function litrosPorKm(){ return CONFIG.litrosVueltaCorta / CATS.find(c=>c.id==="corta").km; }
-function estimatedLitros(){ return computeDaily(RECORD,CONFIG).kmTotal * litrosPorKm(); }
+function estimatedLitros(){ return computeDaily(RECORD,CONFIG).kmTotal * litrosPorKm() + (Number(CONFIG.combustibleRespaldoLitrosDia)||0); }
+function reservaGasolina(recordDate){
+  const mk = monthKeyOf(recordDate);
+  let reserva = 0;
+  Object.values(ALLDAYS).forEach(r=>{
+    if(monthKeyOf(r.date)===mk && r.date<=recordDate){
+      const d = computeDaily(r, CONFIG);
+      reserva += d.fuelBs - d.comprasCombustibleBs;
+    }
+  });
+  return reserva;
+}
 function setFuelTipo(tipo){
   RECORD.fuel.tipo=tipo;
   if(!RECORD.fuel.litros) RECORD.fuel.litros=estimatedLitros().toFixed(1);
@@ -437,18 +476,21 @@ function setFareForMonth(mk,val){ const next=Object.assign({},CONFIG,{fareByMont
 /* ===================== Exportar a Excel ===================== */
 function exportExcel(scopeMonth){
   const allRecs = Object.values(ALLDAYS).filter(r=>!scopeMonth || monthKeyOf(r.date)===scopeMonth).sort((a,b)=>a.date.localeCompare(b.date));
+  const litrosPorKmExport = CONFIG.litrosVueltaCorta / CATS.find(c=>c.id==="corta").km;
   const resumen = allRecs.map(r=>{
     const d=computeDaily(r,CONFIG);
     return {Fecha:r.date,"Tasa BCV (Bs/$)":r.bcvRate||"","Pasaje (Bs)":d.fare,"Pasaje real ($)":d.pasajeUsd?Number(d.pasajeUsd.toFixed(4)):"",
       "Vueltas cortas":d.porCategoria.corta,"Vueltas medianas":d.porCategoria.mediana,"Vueltas largas":d.porCategoria.larga,
-      "Vueltas completas":d.totalCompletas,"Medias vueltas":d.totalMedias,"Total pasajeros":d.totalPasajeros,
+      "Vueltas completas":d.totalCompletas,"Medias vueltas":d.totalMedias,"Equivalente en completas":Number(d.vueltasEquivalentes.toFixed(1)),
+      "Total pasajeros":d.totalPasajeros,
       "Km recorrido (vueltas)":Number(d.kmVueltas.toFixed(1)),"Km personales":Number(d.kmPersonales.toFixed(1)),
-      "Ingreso carreras personales (Bs)":d.ingresoPersonal,"Gasto combustible estimado (Bs)":Number(d.fuelBs.toFixed(2)),"Combustible comprado real (Bs)":Number(d.comprasCombustibleBs.toFixed(2)),
+      "Km total del dia":Number(d.kmTotal.toFixed(1)),"Litros de gasolina estimados":Number((d.kmTotal*litrosPorKmExport).toFixed(2)),
+      "Ingreso carreras personales (Bs)":d.ingresoPersonal,"Gasto combustible estimado (Bs)":Number(d.fuelBs.toFixed(2)),"Combustible comprado real (Bs)":Number(d.comprasCombustibleBs.toFixed(2)),"Mantenimiento estimado (Bs)":Number(d.mantenimientoBs.toFixed(2)),
       "Gasto otros (Bs)":Number(d.gastoOtros.toFixed(2)),"Total gastos (Bs)":Number(d.totalGastos.toFixed(2)),
       "Ingreso estimado - pasaje oficial (Bs)":Number(d.ingresoEstimado.toFixed(2)),"Ingreso real registrado (Bs)":Number(d.ingresoReal.toFixed(2)),
       "Diferencia por pagos parciales (Bs)":Number(d.diferenciaCobro.toFixed(2)),"Efectivo (Bs)":d.efectivo,"Pago movil (Bs)":d.pagoMovil,
       "Total recibido (Bs)":Number(d.totalRecibido.toFixed(2)),"Diferencia de caja (Bs)":Number(d.diferenciaCaja.toFixed(2)),
-      "Balance dia (Bs)":Number(d.balance.toFixed(2))};
+      "Balance dia (Bs)":Number(d.balance.toFixed(2)),"Balance dia ($)":r.bcvRate?Number((d.balance/Number(r.bcvRate)).toFixed(3)):""};
   });
   const vueltasDetalle=[];
   allRecs.forEach(r=>{
@@ -472,7 +514,7 @@ function exportExcel(scopeMonth){
     const {agg}=computeMonthly(mk,ALLDAYS,CONFIG);
     const row={Mes:mk,"Total vueltas":agg.totalVueltas,"Vueltas completas":agg.totalCompletas,"Medias vueltas":agg.totalMedias,
       Cortas:agg.porCategoria.corta,Medianas:agg.porCategoria.mediana,Largas:agg.porCategoria.larga,"Total pasajeros":agg.totalPasajeros,
-      "Km total aprox":Number((agg.kmVueltas+agg.kmPersonales).toFixed(1)),"Gasto combustible estimado (Bs)":Number(agg.fuelBs.toFixed(2)),"Combustible comprado real (Bs)":Number(agg.comprasCombustibleBs.toFixed(2))};
+      "Km total aprox":Number((agg.kmVueltas+agg.kmPersonales).toFixed(1)),"Gasto combustible estimado (Bs)":Number(agg.fuelBs.toFixed(2)),"Combustible comprado real (Bs)":Number(agg.comprasCombustibleBs.toFixed(2)),"Mantenimiento estimado (Bs)":Number(agg.mantenimientoBs.toFixed(2))};
     GASTO_TIPOS.forEach(t=>{ row[`Gasto - ${t} (Bs)`]=Number((agg.gastosPorTipo[t]||0).toFixed(2)); });
     Object.assign(row,{"Total otros gastos (Bs)":Number(agg.gastoOtros.toFixed(2)),"Total gastos (Bs)":Number(agg.totalGastos.toFixed(2)),
       "Ingreso estimado (Bs)":Number(agg.ingresoEstimado.toFixed(2)),"Ingreso real (Bs)":Number(agg.ingresoReal.toFixed(2)),
@@ -485,8 +527,8 @@ function exportExcel(scopeMonth){
     return row;
   });
   const wb=XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(resumenMensual), "Resumen mensual");
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(resumen), "Resumen diario");
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(resumenMensual), "Resumen mensual");
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(vueltasDetalle), "Detalle vueltas");
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(gastosDetalle), "Detalle gastos");
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(personalesDetalle), "Carreras personales");
@@ -563,7 +605,7 @@ function renderHoy(){
     <button class="icon-btn" onclick="shiftDate(1)">›</button>
     ${RECORD.date!==todayStr() ? `<button class="today-btn" onclick="goToDate(todayStr())">Hoy</button>` : ""}
   </div>
-  <div class="date-hint">Toca las flechas o el calendario para cargar cualquier dia pasado y llenarlo con tus datos.</div>`;
+  <div class="date-hint">Toca las flechas o el calendario para cargar cualquier dia pasado y llenarlo con tus datos. Si un dia quedo con datos sueltos por error, puedes <a href="#" onclick="vaciarDia();return false;" style="color:var(--red)">vaciarlo por completo</a>.</div>`;
 
   html += Section("Tasa BCV del dia", `<span class="sec-badge">$</span>`, `
     <label class="field-label">Precio dolar oficial (Bs/$)</label>
@@ -643,6 +685,10 @@ function renderHoy(){
       ${(RECORD.comprasCombustible||[]).length ? `<div class="list">${RECORD.comprasCombustible.map(c=>`<div class="list-row"><span class="list-tag">${c.tipo==="dolarizada"?"Dolarizada":"Subsidiada"}</span><span class="list-sub">${c.litros} L &middot; ${fmtBs(c.costoBs)}${c.nota?" · "+esc(c.nota):""}</span><button class="del-btn" onclick="removeCompraCombustible('${c.id}')">🗑</button></div>`).join("")}</div>` : ""}
       ${daily.comprasCombustibleBs>0 ? `<div class="fare-info">Total comprado realmente hoy: ${fmtBs(daily.comprasCombustibleBs)}</div>` : ""}
     </div>
+    <div class="fare-info" style="margin-top:10px">
+      <strong>Reserva de gasolina acumulada este mes (hasta hoy): ${fmtBs(reservaGasolina(RECORD.date))}</strong><br/>
+      Es el estimado que se ha ido restando del balance dia a dia, menos lo que ya compraste de verdad. Sube cuando manejas sin cargar gasolina, y baja cuando cargas un tanque que cubre varios dias.
+    </div>
   `);
 
   html += Section("Otros gastos (Bs)", `<span class="sec-badge">Bs</span>`, `
@@ -657,8 +703,9 @@ function renderHoy(){
     <div class="chip-row">
       ${GASTO_TIPOS.map(t=>`<div class="chip"><span class="chip-label">${esc(GASTO_LABEL_CORTO[t]||t)}</span><span class="chip-val">${fmtBs(daily.gastosPorTipo[t]||0)}</span></div>`).join("")}
       <div class="chip gasolina"><span class="chip-label">Gasolina</span><span class="chip-val">${fmtBs(daily.fuelBs)}</span></div>
+      <div class="chip gasolina"><span class="chip-label">Manten.</span><span class="chip-val">${fmtBs(daily.mantenimientoBs)}</span></div>
     </div>
-    <div class="date-hint">La ficha "Gasolina" es el estimado automatico segun tu km recorrido — no siempre coincide con el dia que pagaste realmente, pero sirve para ver tu efectividad operativa de hoy.</div>
+    <div class="date-hint">Las fichas "Gasolina" y "Manten." son estimados automaticos (km recorrido y costo tecnico de rodamiento) — no siempre coinciden con el dia exacto que pagaste, pero sirven para ver tu efectividad operativa de hoy.</div>
 
     <button class="add-btn full" onclick="addGasto()">+ Agregar gasto</button>
 
@@ -678,7 +725,12 @@ function renderHoy(){
     ${Math.abs(daily.diferenciaCaja)>0.5 ? `<div class="summary-row"><span>Diferencia de caja vs. lo registrado</span><span class="${daily.diferenciaCaja<0?"neg":"pos"}">${fmtBs(daily.diferenciaCaja)}</span></div><div class="date-hint" style="margin-top:-4px;margin-bottom:4px;">Una diferencia pequena es normal si algun pasajero pago mixto (parte efectivo, parte pago movil).</div>` : ""}
     <div class="summary-divider"></div>
     <div class="summary-row"><span>Total recibido (efectivo + pago movil)</span><span>${fmtBs(daily.totalRecibido)}</span></div>
-    <div class="summary-row"><span>Total gastos</span><span class="neg">${fmtBs(daily.totalGastos)}</span></div>
+    <div class="summary-row" style="cursor:pointer" onclick="SHOW_GASTOS_BREAKDOWN=!SHOW_GASTOS_BREAKDOWN;render();"><span>Total gastos ${SHOW_GASTOS_BREAKDOWN?"&#9662;":"&#9656;"} (toca para ver el detalle)</span><span class="neg">${fmtBs(daily.totalGastos)}</span></div>
+    ${SHOW_GASTOS_BREAKDOWN ? `<div class="chip-row" style="margin-bottom:6px">
+      <div class="chip gasolina"><span class="chip-label">Gasolina (est.)</span><span class="chip-val">${fmtBs(daily.fuelBs)}</span></div>
+      <div class="chip gasolina"><span class="chip-label">Manten. (est.)</span><span class="chip-val">${fmtBs(daily.mantenimientoBs)}</span></div>
+      ${GASTO_TIPOS.filter(t=>daily.gastosPorTipo[t]>0).map(t=>`<div class="chip"><span class="chip-label">${esc(GASTO_LABEL_CORTO[t]||t)}</span><span class="chip-val">${fmtBs(daily.gastosPorTipo[t])}</span></div>`).join("")}
+    </div><div class="date-hint" style="margin-bottom:6px">Gasolina (${fmtBs(daily.fuelBs)}) + mantenimiento (${fmtBs(daily.mantenimientoBs)}) + otros gastos (${fmtBs(daily.gastoOtros)}) = Total gastos (${fmtBs(daily.totalGastos)}).</div>` : ""}
     <div class="summary-row total"><span>Balance del dia (Bs)</span><span class="${daily.balance<0?"neg":"pos"}">${fmtBs(daily.balance)}</span></div>
     ${RECORD.bcvRate ? `<div class="summary-row total"><span>Balance del dia ($)</span><span class="${daily.balance<0?"neg":"pos"}">${fmtUsd(daily.balance/Number(RECORD.bcvRate))}</span></div>` : `<div class="date-hint">Registra la tasa BCV de hoy para ver el balance en dolares.</div>`}
   </div>`;
@@ -764,13 +816,13 @@ function renderMensual(){
     <div class="stat-card"><div class="stat-label">Vueltas (completas / medias)</div><div class="stat-value small">${monthly.agg.totalCompletas} / ${monthly.agg.totalMedias}</div></div>
     <div class="stat-card"><div class="stat-label">Equivalente en completas</div><div class="stat-value small">${monthly.agg.totalVueltasEquivalentes.toFixed(1)}</div></div>
     <div class="stat-card"><div class="stat-label">Pasajeros</div><div class="stat-value">${monthly.agg.totalPasajeros}</div></div>
-    <div class="stat-card"><div class="stat-label">Ingreso estimado</div><div class="stat-value small">${fmtBs(monthly.agg.ingresoEstimado)}</div></div>
     <div class="stat-card"><div class="stat-label">Ingreso real registrado</div><div class="stat-value small">${fmtBs(monthly.agg.ingresoReal)}</div></div>
     <div class="stat-card"><div class="stat-label">Diferencia por pagos parciales</div><div class="stat-value small ${monthly.agg.diferenciaCobro>0?"neg":"pos"}">${monthly.agg.diferenciaCobro>0?"-":"+"}${fmtBs(Math.abs(monthly.agg.diferenciaCobro))}</div></div>
     <div class="stat-card"><div class="stat-label">Total recibido</div><div class="stat-value small">${fmtBs(monthly.agg.totalRecibido)}</div></div>
     <div class="stat-card"><div class="stat-label">Gasto combustible (estimado)</div><div class="stat-value small">${fmtBs(monthly.agg.fuelBs)}</div></div>
     <div class="stat-card"><div class="stat-label">Combustible comprado (real)</div><div class="stat-value small">${fmtBs(monthly.agg.comprasCombustibleBs)}</div></div>
     ${monthly.agg.comprasCombustibleBs>0 ? `<div class="stat-card wide"><div class="stat-label">Diferencia estimado vs. real</div><div class="stat-value small">${fmtBs(monthly.agg.fuelBs-monthly.agg.comprasCombustibleBs)}</div></div>` : ""}
+    <div class="stat-card"><div class="stat-label">Mantenimiento (estimado)</div><div class="stat-value small">${fmtBs(monthly.agg.mantenimientoBs)}</div></div>
     <div class="stat-card"><div class="stat-label">Otros gastos</div><div class="stat-value small">${fmtBs(monthly.agg.gastoOtros)}</div></div>
     <div class="stat-card wide"><div class="stat-label">Balance del mes</div><div class="stat-value ${monthly.agg.balance<0?"neg":"pos"}">${fmtBs(monthly.agg.balance)}</div></div>
   </div>`;
@@ -844,8 +896,17 @@ function renderChart(data){
   </svg>`;
 }
 
+function updateCostoTecnico(id, field, val){
+  const items = (CONFIG.costosTecnicos||DEFAULT_CONFIG.costosTecnicos).map(c=>
+    c.id===id ? {...c, [field]: Number(val)||0} : c
+  );
+  saveConfig(Object.assign({}, CONFIG, {costosTecnicos: items}));
+}
+
 function renderSettings(){
   if(!SHOW_SETTINGS) return "";
+  const items = CONFIG.costosTecnicos || DEFAULT_CONFIG.costosTecnicos;
+  const dailyUsd = costoTecnicoUsdDia(CONFIG);
   return `<div class="modal-overlay" onclick="SHOW_SETTINGS=false;render();">
     <div class="modal" onclick="event.stopPropagation()">
       <div class="modal-head"><span>Ajustes</span><button class="icon-btn" onclick="SHOW_SETTINGS=false;render();">✕</button></div>
@@ -855,11 +916,25 @@ function renderSettings(){
       <input type="number" inputmode="decimal" class="input" value="${CONFIG.fuelSubsidizadaColaboracionUsd}" onchange="saveConfig(Object.assign({},CONFIG,{fuelSubsidizadaColaboracionUsd:Number(this.value)||0}))"/>
       <label class="field-label">Litros que gasta en una vuelta corta completa (8.1 km medidos)</label>
       <input type="number" inputmode="decimal" class="input" value="${CONFIG.litrosVueltaCorta}" onchange="saveConfig(Object.assign({},CONFIG,{litrosVueltaCorta:Number(this.value)||0}))"/>
+      <label class="field-label">Combustible de respaldo/maniobras (litros extra por dia)</label>
+      <input type="number" inputmode="decimal" class="input" value="${CONFIG.combustibleRespaldoLitrosDia}" onchange="saveConfig(Object.assign({},CONFIG,{combustibleRespaldoLitrosDia:Number(this.value)||0}))"/>
       <label class="field-label">Meta de pasaje en dolares (sugerencia mensual)</label>
       <input type="number" inputmode="decimal" class="input" value="${CONFIG.metaPasajeUsd}" onchange="saveConfig(Object.assign({},CONFIG,{metaPasajeUsd:Number(this.value)||0}))"/>
       <label class="field-label">Pasaje del mes actual (${monthKeyOf(RECORD.date)}, Bs)</label>
       <input type="number" inputmode="decimal" class="input" value="${CONFIG.fareByMonth[monthKeyOf(RECORD.date)]||""}" onchange="setFareForMonth('${monthKeyOf(RECORD.date)}',this.value)"/>
-      <label class="field-label">Enlace de sincronizacion (URL del Apps Script de tu Hoja de Google)</label>
+
+      <div class="modal-note" style="margin-top:16px;font-weight:700;color:var(--text)">Costo tecnico de rodamiento (mantenimiento)</div>
+      <div class="date-hint">Se prorratea a diario y se resta del balance, igual que la gasolina — asi tu balance refleja el verdadero costo de rodar, no solo la gasolina del dia.</div>
+      ${items.map(c=>`
+        <div class="field-label" style="margin-top:10px">${esc(c.label)}</div>
+        <div class="inline-form">
+          <div class="flex1"><span class="field-label" style="margin:0 0 3px">Costo ($)</span><input type="number" inputmode="decimal" class="input" value="${c.usd}" onchange="updateCostoTecnico('${c.id}','usd',this.value)"/></div>
+          <div class="flex1"><span class="field-label" style="margin:0 0 3px">Cada cuantos dias</span><input type="number" inputmode="decimal" class="input" value="${c.dias}" onchange="updateCostoTecnico('${c.id}','dias',this.value)"/></div>
+        </div>
+      `).join("")}
+      <div class="fare-info" style="margin-top:10px"><strong>Total mantenimiento estimado: ${fmtUsd(dailyUsd)}/dia</strong></div>
+
+      <label class="field-label" style="margin-top:16px">Enlace de sincronizacion (URL del Apps Script de tu Hoja de Google)</label>
       <input type="text" placeholder="https://script.google.com/macros/s/AKfycb.../exec" class="input" value="${esc(CONFIG.syncUrl)}" onchange="saveConfig(Object.assign({},CONFIG,{syncUrl:this.value.trim()}))"/>
       <div class="modal-note">Sigue la guia de instalacion para crear este enlace paso a paso; se pega aqui una sola vez.</div>
     </div>
