@@ -113,6 +113,7 @@ body{margin:0;background:#0f1013;}
 .chip.gasolina{border-color:var(--yellow-dim);background:rgba(244,180,0,.08);}
 .chip-label{font-size:10px;color:var(--text-muted);}
 .chip-val{font-size:12px;font-weight:700;color:var(--text);}
+.chip-usd{font-size:10px;color:var(--text-muted);}
 .summary-divider{height:1px;background:var(--border);margin:10px 0;}
 .export-btn{display:flex;align-items:center;justify-content:center;gap:8px;background:var(--yellow);color:#1a1a1a;border:none;border-radius:10px;padding:12px;font-weight:700;font-size:13px;cursor:pointer;}
 .export-btn.secondary{background:var(--bg-sub);color:var(--text);border:1px solid var(--border);}
@@ -174,7 +175,20 @@ function fmtBs(n){ const v=Number(n)||0; return v.toLocaleString("es-VE",{minimu
 function fmtUsd(n){ if(n===null||n===undefined||isNaN(n)) return "--"; return "$"+Number(n).toFixed(3); }
 function esc(s){ return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
 function blankRecord(date){
-  return { date, bcvRate:"", vueltas:[], personales:[], fuel:{tipo:"",litros:""}, comprasCombustible:[], gastos:[], cierre:{efectivo:"",pagoMovil:""} };
+  return { date, bcvRate:"", vueltas:[], personales:[], fuel:{tipo:"",litros:""}, comprasCombustible:[], gastos:[], cierre:{efectivo:"",pagoMovil:""}, cierreMovimientos:[] };
+}
+function computeCierreTotals(rec){
+  const movs = rec.cierreMovimientos || [];
+  if(!movs.length){
+    return { efectivo:Number(rec.cierre.efectivo)||0, pagoMovil:Number(rec.cierre.pagoMovil)||0 };
+  }
+  let efectivo=0, pagoMovil=0;
+  movs.slice().sort((a,b)=>(a.ts||0)-(b.ts||0)).forEach(m=>{
+    const monto = Number(m.monto)||0;
+    if(m.tipo==="efectivo"){ efectivo = m.modo==="total" ? monto : efectivo+monto; }
+    else { pagoMovil = m.modo==="total" ? monto : pagoMovil+monto; }
+  });
+  return {efectivo, pagoMovil};
 }
 function normalizeApiDate(raw){
   if(!raw || typeof raw!=="string") return null;
@@ -191,6 +205,7 @@ function vueltaPax(v){
   return Number(v.pasajeros)||0;
 }
 function vueltaKm(v){
+  if(v.km!==undefined && v.km!==null && v.km!=="") return Number(v.km)||0;
   const cat = CATS.find(c=>c.id===v.categoria); if(!cat) return 0;
   const tipo = v.tipo===undefined ? "completa" : v.tipo;
   return cat.km * (tipo==="completa" ? 1 : 0.5);
@@ -230,7 +245,7 @@ function computeDaily(rec, config){
   const ingresoEstimado = ingresoEstimadoVueltas+ingresoPersonal;
   const ingresoReal = ingresoRealVueltas+ingresoPersonal;
   const diferenciaCobro = ingresoEstimado-ingresoReal;
-  const efectivo=Number(rec.cierre.efectivo)||0, pagoMovil=Number(rec.cierre.pagoMovil)||0;
+  const {efectivo, pagoMovil} = computeCierreTotals(rec);
   const totalRecibido = efectivo+pagoMovil;
   const diferenciaCaja = totalRecibido-ingresoReal;
   const balance = totalRecibido-totalGastos;
@@ -383,8 +398,12 @@ function addQuickVueltas(){
   persistRecord(); render();
 }
 function setQuick(catId,val){ QUICK[catId]=val; }
+function defaultKmFor(catId, tipo){
+  const cat = CATS.find(c=>c.id===catId);
+  return cat ? cat.km * (tipo==="completa"?1:0.5) : 0;
+}
 function openDraft(catId){
-  DRAFT={categoria:catId,tipo:"completa",direccion:"ida",pasajerosIda:0,pasajerosVuelta:0,pasajeros:0,ajuste:0};
+  DRAFT={categoria:catId,tipo:"completa",direccion:"ida",pasajerosIda:0,pasajerosVuelta:0,pasajeros:0,ajuste:0,km:defaultKmFor(catId,"completa"),kmManual:false};
   render();
 }
 function cancelDraft(){ DRAFT=null; render(); }
@@ -397,9 +416,15 @@ function bumpDraft(field,delta){
   DRAFT[field]=Math.max(min,(Number(DRAFT[field])||0)+delta);
   render();
 }
-function setDraftTipo(tipo){ if(DRAFT){ DRAFT.tipo=tipo; render(); } }
+function setDraftTipo(tipo){
+  if(!DRAFT) return;
+  DRAFT.tipo=tipo;
+  if(!DRAFT.kmManual) DRAFT.km = defaultKmFor(DRAFT.categoria, tipo);
+  render();
+}
 function setDraftDireccion(dir){ if(DRAFT){ DRAFT.direccion=dir; render(); } }
 function setDraftAjuste(val){ if(DRAFT){ DRAFT.ajuste=val; } }
+function setDraftKm(val){ if(DRAFT){ DRAFT.km=val; DRAFT.kmManual=true; } }
 function commitDraft(){
   if(!DRAFT) return;
   const esperado=draftEsperado(DRAFT), ajuste=Number(DRAFT.ajuste)||0;
@@ -409,12 +434,36 @@ function commitDraft(){
     pasajerosIda: DRAFT.tipo==="completa"?Number(DRAFT.pasajerosIda)||0:undefined,
     pasajerosVuelta: DRAFT.tipo==="completa"?Number(DRAFT.pasajerosVuelta)||0:undefined,
     pasajeros: DRAFT.tipo==="media"?Number(DRAFT.pasajeros)||0:undefined,
+    km: DRAFT.kmManual ? (Number(DRAFT.km)||0) : undefined,
     ajuste, monto:esperado+ajuste, ts:Date.now(),
   };
   RECORD.vueltas=RECORD.vueltas.concat([nueva]);
   DRAFT=null; persistRecord(); render();
 }
 function removeVuelta(id){ RECORD.vueltas=RECORD.vueltas.filter(v=>v.id!==id); persistRecord(); render(); }
+
+/* ===================== Medicion de km en vivo (GPS) ===================== */
+let GPS_WATCH_ID=null, GPS_LAST_POS=null, GPS_DISTANCE_KM=0, GPS_STATUS="idle";
+function haversineKm(lat1,lon1,lat2,lon2){
+  const R=6371;
+  const dLat=(lat2-lat1)*Math.PI/180, dLon=(lon2-lon1)*Math.PI/180;
+  const a=Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+}
+function gpsStart(){
+  if(!navigator.geolocation){ GPS_STATUS="unsupported"; render(); return; }
+  GPS_STATUS="tracking"; GPS_LAST_POS=null; GPS_DISTANCE_KM=0;
+  GPS_WATCH_ID = navigator.geolocation.watchPosition((pos)=>{
+    const {latitude,longitude}=pos.coords;
+    if(GPS_LAST_POS){ GPS_DISTANCE_KM += haversineKm(GPS_LAST_POS.lat,GPS_LAST_POS.lon,latitude,longitude); }
+    GPS_LAST_POS={lat:latitude,lon:longitude};
+    render();
+  }, ()=>{ GPS_STATUS="error"; render(); }, {enableHighAccuracy:true, maximumAge:0, timeout:20000});
+  render();
+}
+function gpsStop(){ if(GPS_WATCH_ID!=null && navigator.geolocation) navigator.geolocation.clearWatch(GPS_WATCH_ID); GPS_WATCH_ID=null; GPS_STATUS="stopped"; render(); }
+function gpsReset(){ GPS_DISTANCE_KM=0; GPS_LAST_POS=null; render(); }
+function gpsUseInDraft(){ if(DRAFT){ DRAFT.km=GPS_DISTANCE_KM.toFixed(2); DRAFT.kmManual=true; render(); } }
 
 /* ===================== Carreras personales ===================== */
 function addPersonal(){
@@ -471,11 +520,22 @@ function removeGasto(id){ RECORD.gastos=RECORD.gastos.filter(g=>g.id!==id); pers
 /* ===================== Cierre y BCV manual ===================== */
 function setBcv(val){ RECORD.bcvRate=val; persistRecord(); render(); }
 function setCierre(field,val){ RECORD.cierre[field]=val; persistRecord(); render(); }
+
+let CIERRE_TIPO="efectivo", CIERRE_MODO="parcial", CIERRE_MONTO="", CIERRE_NOTA="";
+function setCierreTipo(t){ CIERRE_TIPO=t; render(); }
+function setCierreModo(m){ CIERRE_MODO=m; render(); }
+function addCierreMovimiento(){
+  if(!CIERRE_MONTO) return;
+  if(!RECORD.cierreMovimientos) RECORD.cierreMovimientos=[];
+  RECORD.cierreMovimientos.push({id:uid(), tipo:CIERRE_TIPO, modo:CIERRE_MODO, monto:Number(CIERRE_MONTO)||0, nota:CIERRE_NOTA, ts:Date.now()});
+  CIERRE_MONTO=""; CIERRE_NOTA=""; persistRecord(); render();
+}
+function removeCierreMovimiento(id){ RECORD.cierreMovimientos=(RECORD.cierreMovimientos||[]).filter(m=>m.id!==id); persistRecord(); render(); }
 function setFareForMonth(mk,val){ const next=Object.assign({},CONFIG,{fareByMonth:Object.assign({},CONFIG.fareByMonth,{[mk]:Number(val)||0})}); saveConfig(next); }
 
 /* ===================== Exportar a Excel ===================== */
 function exportExcel(scopeMonth){
-  const allRecs = Object.values(ALLDAYS).filter(r=>!scopeMonth || monthKeyOf(r.date)===scopeMonth).sort((a,b)=>a.date.localeCompare(b.date));
+  const allRecs = Object.values(ALLDAYS).filter(r=>(!scopeMonth || monthKeyOf(r.date)===scopeMonth) && diaTieneDatos(r)).sort((a,b)=>a.date.localeCompare(b.date));
   const litrosPorKmExport = CONFIG.litrosVueltaCorta / CATS.find(c=>c.id==="corta").km;
   const resumen = allRecs.map(r=>{
     const d=computeDaily(r,CONFIG);
@@ -712,27 +772,50 @@ function renderHoy(){
     ${RECORD.gastos.length ? `<div class="field-label" style="margin-top:14px">Gastos cargados hoy (individual)</div><div class="list">${RECORD.gastos.map(g=>`<div class="list-row"><span class="list-tag">${esc(g.tipo)}</span><span class="list-sub">${fmtBs(g.monto)}${g.nota?" · "+esc(g.nota):""}</span><button class="del-btn" onclick="removeGasto('${g.id}')">🗑</button></div>`).join("")}</div>` : `<div class="date-hint" style="margin-top:10px">Aun no has cargado ningun gasto individual hoy.</div>`}
   `);
 
+  const cierreTotales = computeCierreTotals(RECORD);
+  const hayMovimientos = (RECORD.cierreMovimientos && RECORD.cierreMovimientos.length) || RECORD.cierre.efectivo!=="" || RECORD.cierre.pagoMovil!=="";
+
   html += Section("Cierre del dia", "💰", `
-    <div class="inline-form">
-      <div class="flex1"><label class="field-label">Efectivo (Bs)</label><input type="number" inputmode="decimal" placeholder="0.00" value="${esc(RECORD.cierre.efectivo)}" onchange="setCierre('efectivo',this.value)" class="input"/></div>
-      <div class="flex1"><label class="field-label">Pago movil (Bs)</label><input type="number" inputmode="decimal" placeholder="0.00" value="${esc(RECORD.cierre.pagoMovil)}" onchange="setCierre('pagoMovil',this.value)" class="input"/></div>
+    <div class="date-hint" style="margin-top:0">Registra el efectivo y pago movil como quieras: en un solo monto al final, o en varios movimientos durante el dia (ej. un deposito a mediodia). Marca "Parcial" para sumar al acumulado, o "Total exacto" si estas declarando el monto final de una vez.</div>
+    <div class="radio-row" style="margin-top:8px">
+      <button class="radio-pill ${CIERRE_TIPO==="efectivo"?"active":""}" onclick="setCierreTipo('efectivo')">Efectivo</button>
+      <button class="radio-pill ${CIERRE_TIPO==="pagoMovil"?"active":""}" onclick="setCierreTipo('pagoMovil')">Pago movil</button>
     </div>
+    <div class="radio-row" style="margin-top:6px">
+      <button class="radio-pill ${CIERRE_MODO==="parcial"?"active":""}" onclick="setCierreModo('parcial')">+ Parcial (suma)</button>
+      <button class="radio-pill ${CIERRE_MODO==="total"?"active":""}" onclick="setCierreModo('total')">= Total exacto</button>
+    </div>
+    <label class="field-label">Monto (Bs)</label>
+    <input type="number" inputmode="decimal" placeholder="0.00" value="${esc(CIERRE_MONTO)}" oninput="CIERRE_MONTO=this.value" class="input"/>
+    <label class="field-label">Nota (opcional, ej: deposito banco mediodia)</label>
+    <input type="text" placeholder="Ej: deposito banco mediodia" value="${esc(CIERRE_NOTA)}" oninput="CIERRE_NOTA=this.value" class="input"/>
+    <button class="add-btn full" onclick="addCierreMovimiento()">+ Agregar movimiento</button>
+
+    ${(RECORD.cierreMovimientos&&RECORD.cierreMovimientos.length) ? `<div class="list">${RECORD.cierreMovimientos.map(m=>`<div class="list-row"><span class="list-tag">${m.tipo==="efectivo"?"Efectivo":"Pago movil"} &middot; ${m.modo==="total"?"total":"parcial"}</span><span class="list-sub">${fmtBs(m.monto)}${m.nota?" · "+esc(m.nota):""} &middot; ${fmtTime(m.ts)}</span><button class="del-btn" onclick="removeCierreMovimiento('${m.id}')">🗑</button></div>`).join("")}</div>` : ""}
+
+    <div class="fare-info" style="margin-top:10px"><strong>Efectivo acumulado: ${fmtBs(cierreTotales.efectivo)} &middot; Pago movil acumulado: ${fmtBs(cierreTotales.pagoMovil)}</strong></div>
   `);
 
   html += `<div class="summary-card">
     <div class="summary-row"><span>Ingreso real registrado</span><span>${fmtBs(daily.ingresoReal)}</span></div>
     ${Math.abs(daily.diferenciaCobro)>0.5 ? `<div class="summary-row"><span>Diferencia por pagos parciales (rebaja)</span><span class="${daily.diferenciaCobro>0?"neg":"pos"}">${daily.diferenciaCobro>0?"-":"+"}${fmtBs(Math.abs(daily.diferenciaCobro))}</span></div>` : ""}
+    ${hayMovimientos ? `
     ${Math.abs(daily.diferenciaCaja)>0.5 ? `<div class="summary-row"><span>Diferencia de caja vs. lo registrado</span><span class="${daily.diferenciaCaja<0?"neg":"pos"}">${fmtBs(daily.diferenciaCaja)}</span></div><div class="date-hint" style="margin-top:-4px;margin-bottom:4px;">Una diferencia pequena es normal si algun pasajero pago mixto (parte efectivo, parte pago movil).</div>` : ""}
     <div class="summary-divider"></div>
     <div class="summary-row"><span>Total recibido (efectivo + pago movil)</span><span>${fmtBs(daily.totalRecibido)}</span></div>
     <div class="summary-row" style="cursor:pointer" onclick="SHOW_GASTOS_BREAKDOWN=!SHOW_GASTOS_BREAKDOWN;render();"><span>Total gastos ${SHOW_GASTOS_BREAKDOWN?"&#9662;":"&#9656;"} (toca para ver el detalle)</span><span class="neg">${fmtBs(daily.totalGastos)}</span></div>
     ${SHOW_GASTOS_BREAKDOWN ? `<div class="chip-row" style="margin-bottom:6px">
-      <div class="chip gasolina"><span class="chip-label">Gasolina (est.)</span><span class="chip-val">${fmtBs(daily.fuelBs)}</span></div>
-      <div class="chip gasolina"><span class="chip-label">Manten. (est.)</span><span class="chip-val">${fmtBs(daily.mantenimientoBs)}</span></div>
-      ${GASTO_TIPOS.filter(t=>daily.gastosPorTipo[t]>0).map(t=>`<div class="chip"><span class="chip-label">${esc(GASTO_LABEL_CORTO[t]||t)}</span><span class="chip-val">${fmtBs(daily.gastosPorTipo[t])}</span></div>`).join("")}
+      <div class="chip gasolina"><span class="chip-label">Gasolina (est.)</span><span class="chip-val">${fmtBs(daily.fuelBs)}</span><span class="chip-usd">${RECORD.bcvRate?fmtUsd(daily.fuelBs/Number(RECORD.bcvRate)):""}</span></div>
+      <div class="chip gasolina"><span class="chip-label">Manten. (est.)</span><span class="chip-val">${fmtBs(daily.mantenimientoBs)}</span><span class="chip-usd">${RECORD.bcvRate?fmtUsd(daily.mantenimientoBs/Number(RECORD.bcvRate)):""}</span></div>
+      ${GASTO_TIPOS.filter(t=>daily.gastosPorTipo[t]>0).map(t=>`<div class="chip"><span class="chip-label">${esc(GASTO_LABEL_CORTO[t]||t)}</span><span class="chip-val">${fmtBs(daily.gastosPorTipo[t])}</span><span class="chip-usd">${RECORD.bcvRate?fmtUsd(daily.gastosPorTipo[t]/Number(RECORD.bcvRate)):""}</span></div>`).join("")}
     </div><div class="date-hint" style="margin-bottom:6px">Gasolina (${fmtBs(daily.fuelBs)}) + mantenimiento (${fmtBs(daily.mantenimientoBs)}) + otros gastos (${fmtBs(daily.gastoOtros)}) = Total gastos (${fmtBs(daily.totalGastos)}).</div>` : ""}
     <div class="summary-row total"><span>Balance del dia (Bs)</span><span class="${daily.balance<0?"neg":"pos"}">${fmtBs(daily.balance)}</span></div>
-    ${RECORD.bcvRate ? `<div class="summary-row total"><span>Balance del dia ($)</span><span class="${daily.balance<0?"neg":"pos"}">${fmtUsd(daily.balance/Number(RECORD.bcvRate))}</span></div>` : `<div class="date-hint">Registra la tasa BCV de hoy para ver el balance en dolares.</div>`}
+    ${RECORD.bcvRate ? `<div class="summary-row total"><span>Balance del dia ($)</span><span class="${daily.balance<0?"neg":"pos"}">${fmtUsd(daily.balance/Number(RECORD.bcvRate))}</span></div>
+    <div class="summary-row"><span>Total gastos ($)</span><span class="neg">${fmtUsd(daily.totalGastos/Number(RECORD.bcvRate))}</span></div>` : `<div class="date-hint">Registra la tasa BCV de hoy para ver el balance y los gastos en dolares.</div>`}
+    ` : `
+    <div class="summary-divider"></div>
+    <div class="date-hint">Registra al menos un movimiento de efectivo o pago movil arriba para ver tu balance del dia.</div>
+    `}
   </div>`;
 
   html += `</div>`;
@@ -756,6 +839,22 @@ function renderDraft(){
       <div class="pax-col"><span class="field-label">Pax ida</span><div class="stepper"><button onclick="bumpDraft('pasajerosIda',-1)">-</button><span>${d.pasajerosIda}</span><button onclick="bumpDraft('pasajerosIda',1)">+</button></div></div>
       <div class="pax-col"><span class="field-label">Pax vuelta</span><div class="stepper"><button onclick="bumpDraft('pasajerosVuelta',-1)">-</button><span>${d.pasajerosVuelta}</span><button onclick="bumpDraft('pasajerosVuelta',1)">+</button></div></div>
     </div>` : `<div class="pax-col" style="margin-top:8px"><span class="field-label">Pasajeros de ese tramo</span><div class="stepper"><button onclick="bumpDraft('pasajeros',-1)">-</button><span>${d.pasajeros}</span><button onclick="bumpDraft('pasajeros',1)">+</button></div></div>`}
+
+    <label class="field-label">Km recorrido en esta vuelta &middot; ajustalo si fue distinto a lo normal</label>
+    <input type="number" inputmode="decimal" step="0.1" class="input" value="${esc(d.km)}" onchange="setDraftKm(this.value)"/>
+
+    <div class="quick-load" style="margin-top:10px;padding:8px">
+      <div class="field-label" style="margin:0">Medir km en vivo con GPS (opcional)</div>
+      <div class="fare-info" style="margin:4px 0">Distancia medida: <strong>${GPS_DISTANCE_KM.toFixed(2)} km</strong> ${GPS_STATUS==="tracking"?"&middot; midiendo...":""}</div>
+      ${GPS_STATUS==="unsupported" ? `<div class="date-hint">Tu navegador no soporta GPS aqui.</div>` : ""}
+      ${GPS_STATUS==="error" ? `<div class="date-hint">No se pudo obtener tu ubicacion. Revisa permisos de ubicacion del navegador.</div>` : ""}
+      <div class="inline-form wrap" style="gap:6px">
+        ${GPS_STATUS!=="tracking" ? `<button class="radio-pill" onclick="gpsStart()">▶ Iniciar</button>` : `<button class="radio-pill active" onclick="gpsStop()">■ Detener</button>`}
+        <button class="radio-pill" onclick="gpsReset()">Reiniciar</button>
+        <button class="radio-pill" onclick="gpsUseInDraft()">Usar este valor</button>
+      </div>
+    </div>
+
     <label class="field-label">Faltante o diferencia (Bs) &middot; deja 0 si pago completo, escribe -20 si faltaron 20 Bs</label>
     <input type="number" inputmode="decimal" class="input" value="${esc(d.ajuste)}" onchange="setDraftAjuste(this.value);render();"/>
     <div class="fare-info">Esperado: ${fmtBs(esperado)} &middot; Recibido: ${fmtBs(recibido)}</div>
@@ -843,7 +942,20 @@ function renderMensual(){
     <div class="list">
       ${GASTO_TIPOS.map(t=>`<div class="list-row"><span class="list-tag" style="flex:1">${esc(GASTO_LABEL_CORTO[t]||t)}</span><span class="list-sub" style="flex:none;color:var(--text)">${fmtBs(monthly.agg.gastosPorTipo[t])}</span></div>`).join("")}
       <div class="list-row" style="border-color:var(--yellow-dim)"><span class="list-tag" style="flex:1">Gasolina (estimado)</span><span class="list-sub" style="flex:none;color:var(--text)">${fmtBs(monthly.agg.fuelBs)}</span></div>
+      <div class="list-row" style="border-color:var(--yellow-dim)"><span class="list-tag" style="flex:1">Mantenimiento (estimado)</span><span class="list-sub" style="flex:none;color:var(--text)">${fmtBs(monthly.agg.mantenimientoBs)}</span></div>
     </div>
+  `);
+
+  html += Section("Editar costo tecnico de rodamiento (mantenimiento)", "🔧", `
+    <div class="date-hint" style="margin-top:0">Ajusta aqui los precios y frecuencias reales de tu carro. Se prorratea a diario y se resta del balance, igual que la gasolina.</div>
+    ${(CONFIG.costosTecnicos||DEFAULT_CONFIG.costosTecnicos).map(c=>`
+      <div class="field-label" style="margin-top:10px">${esc(c.label)}</div>
+      <div class="inline-form">
+        <div class="flex1"><span class="field-label" style="margin:0 0 3px">Costo ($)</span><input type="number" inputmode="decimal" class="input" value="${c.usd}" onchange="updateCostoTecnico('${c.id}','usd',this.value)"/></div>
+        <div class="flex1"><span class="field-label" style="margin:0 0 3px">Cada cuantos dias</span><input type="number" inputmode="decimal" class="input" value="${c.dias}" onchange="updateCostoTecnico('${c.id}','dias',this.value)"/></div>
+      </div>
+    `).join("")}
+    <div class="fare-info" style="margin-top:10px"><strong>Total mantenimiento estimado: ${fmtUsd(costoTecnicoUsdDia(CONFIG))}/dia</strong></div>
   `);
 
   if(monthly.chartData.length){
